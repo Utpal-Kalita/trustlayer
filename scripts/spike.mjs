@@ -2,6 +2,8 @@
 // and that an agent ALONE cannot execute, and the gatekeeper ALONE cannot move funds.
 import { Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, LAMPORTS_PER_SOL, sendAndConfirmTransaction, Transaction } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
+import bs58 from 'bs58';
+import fs from 'node:fs';
 
 const { transactions, accounts, types, utils } = multisig;
 const { Permissions, Permission } = types;
@@ -37,19 +39,45 @@ async function sendV(tx, signers, label) {
 const bh = async () => (await conn.getLatestBlockhash('confirmed')).blockhash;
 
 async function main() {
-  const creator = Keypair.generate();    // demo owner/payer
-  const agent = Keypair.generate();      // agent authority (member 1)
-  const gatekeeper = Keypair.generate(); // TrustLayer gatekeeper (member 2)
-  const vendorA = Keypair.generate().publicKey;
-  const attacker = Keypair.generate().publicKey;
+  // Load persistent keypairs from .env (created by scripts/genkeys.mjs) so the
+  // same identities are reused across runs; fall back to fresh throwaway keys.
+  let envKeys = {};
+  try {
+    const env = fs.readFileSync('.env', 'utf8');
+    for (const line of env.split('\n')) {
+      const m = line.match(/^([A-Z_]+)=(.+)$/);
+      if (m) envKeys[m[1]] = m[2].trim();
+    }
+  } catch {}
+  const kp = (name) => envKeys[name + '_SECRET']
+    ? Keypair.fromSecretKey(bs58.decode(envKeys[name + '_SECRET']))
+    : Keypair.generate();
+  const creator = kp('OWNER');
+  const agent = kp('AGENT');
+  const gatekeeper = kp('GATEKEEPER');
+  const vendorA = envKeys.VENDOR_A_PUBKEY ? new PublicKey(envKeys.VENDOR_A_PUBKEY) : Keypair.generate().publicKey;
+  const attacker = envKeys.ATTACKER_PUBKEY ? new PublicKey(envKeys.ATTACKER_PUBKEY) : Keypair.generate().publicKey;
 
   console.log('creator   ', creator.publicKey.toBase58());
   console.log('agent     ', agent.publicKey.toBase58());
   console.log('gatekeeper', gatekeeper.publicKey.toBase58());
 
-  await airdrop(creator.publicKey, 2, 'creator');
-  await airdrop(agent.publicKey, 1, 'agent');
-  await airdrop(gatekeeper.publicKey, 1, 'gatekeeper');
+  // Fund each wallet only if it is short; RPC faucet is often closed, so a
+  // pre-funded creator (e.g. via https://faucet.solana.com) tops up the others.
+  const ensure = async (kp2, sol, label) => {
+    const bal = await conn.getBalance(kp2.publicKey);
+    if (bal >= 0.05 * LAMPORTS_PER_SOL) { console.log(`${label} funded: ${(bal/LAMPORTS_PER_SOL).toFixed(3)} SOL`); return; }
+    try { await airdrop(kp2.publicKey, sol, label); }
+    catch {
+      if (kp2 === creator) throw new Error('creator wallet has no SOL - fund it at https://faucet.solana.com: ' + creator.publicKey.toBase58());
+      const topup = new Transaction().add(SystemProgram.transfer({ fromPubkey: creator.publicKey, toPubkey: kp2.publicKey, lamports: BigInt(0.05 * LAMPORTS_PER_SOL) }));
+      const sig = await sendAndConfirmTransaction(conn, topup, [creator]);
+      console.log(`creator topped up ${label} (${sig})`);
+    }
+  };
+  await ensure(creator, 2, 'creator');
+  await ensure(agent, 1, 'agent');
+  await ensure(gatekeeper, 1, 'gatekeeper');
 
   // --- 1. Create 2-of-2 multisig ---
   const createKey = Keypair.generate();
