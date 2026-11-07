@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrustLayer - The Permission Layer for AI Agents</title>
+<style>
+  :root{
+    --bg:#0a0b10; --panel:#12141c; --panel2:#171a25; --line:#232838;
+    --text:#e8eaf2; --dim:#9aa3b8; --faint:#5c6478;
+    --green:#14f195; --violet:#9945ff; --red:#ff5c5c; --amber:#ffb84d;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 32px}
+
+  header{border-bottom:1px solid var(--line);padding:20px 0}
+  header .wrap{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:12px;font-weight:650;font-size:18px;letter-spacing:-.01em}
+  .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--violet),var(--green));display:grid;place-items:center;font-size:15px;color:#0a0b10;font-weight:800}
+  .chip{font:12px/1 var(--mono);color:var(--green);border:1px solid #14f19544;background:#14f19511;padding:7px 12px;border-radius:999px}
+
+  .hero{padding:72px 0 56px;max-width:760px}
+  .hero h1{font-size:44px;line-height:1.12;letter-spacing:-.025em;font-weight:700}
+  .hero h1 .grad{background:linear-gradient(90deg,var(--green),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--dim);margin-top:18px;font-size:18px;max-width:620px}
+
+  .flow{display:flex;align-items:stretch;gap:0;margin:40px 0 8px;overflow-x:auto;padding-bottom:8px}
+  .step{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);padding:16px 14px;border-radius:12px;text-align:center;transition:transform .18s ease,border-color .18s ease}
+  .step:hover{transform:translateY(-2px);border-color:#3a4358}
+  .step b{display:block;font-size:14px;margin-top:6px}
+  .step span{font:11px var(--mono);color:var(--faint)}
+  .step .ic{font-size:19px}
+  .arrow{align-self:center;color:var(--faint);padding:0 8px;font-size:18px;flex:none}
+
+  section{padding:56px 0}
+  h2{font-size:26px;letter-spacing:-.02em;margin-bottom:6px}
+  .sub{color:var(--dim);margin-bottom:28px;font-size:15px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}.hero h1{font-size:34px}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
+  .card h3{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:12px}
+  .kv{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--dim);font-size:14px}
+  .kv .v{font:13px var(--mono);color:var(--text)}
+  .addr{font:12px var(--mono);color:var(--dim);background:var(--panel2);border:1px solid var(--line);padding:6px 10px;border-radius:8px;display:inline-block;margin:3px 4px 3px 0}
+  .addr.ok{color:var(--green);border-color:#14f19533}
+  .addr.bad{color:var(--red);border-color:#ff5c5c33}
+
+  label{display:block;font-size:13px;color:var(--dim);margin:14px 0 6px}
+  select,input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:11px 13px;font:14px var(--mono);outline:none;transition:border-color .15s}
+  select:focus,input:focus{border-color:var(--violet)}
+  button{margin-top:20px;width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(90deg,var(--green),#0ecb81);color:#06130c;font-weight:700;font-size:15px;cursor:pointer;transition:transform .12s ease,filter .12s ease}
+  button:hover{filter:brightness(1.08)}
+  button:active{transform:scale(.985)}
+
+  .verdict{margin-top:20px;border-radius:12px;padding:18px;display:none}
+  .verdict.show{display:block}
+  .verdict.allow{background:#0d2418;border:1px solid #14f19555}
+  .verdict.reject{background:#2a1215;border:1px solid #ff5c5c55}
+  .verdict .t{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px}
+  .verdict.allow .t{color:var(--green)} .verdict.reject .t{color:var(--red)}
+  .verdict ul{margin:10px 0 0 20px;color:var(--dim);font-size:13.5px}
+  .verdict .note{margin-top:10px;font-size:13px;color:var(--dim)}
+
+  .log{list-style:none;max-height:340px;overflow:auto}
+  .log li{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .log .when{color:var(--faint);font:11.5px var(--mono);flex:none;width:78px}
+  .log .d{font-weight:650;flex:none;width:74px}
+  .log .d.a{color:var(--green)} .log .d.r{color:var(--red)}
+  .log .what{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--faint);font-size:13px}
+  .pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:7px;animation:p 2.2s infinite}
+  @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand"><span class="mark">T</span>TrustLayer</div>
+  <div class="chip"><span class="pulse"></span>Solana Devnet - Squads 2-of-2</div>
+</div></header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>The <span class="grad">permission layer</span> for AI agents.</h1>
+    <p>Agents propose. Policy decides. The gatekeeper signs only what the rules allow. A 2-of-2 Squads multisig means the agent can never move funds alone.</p>
+  </div>
+
+  <div class="flow">
+    <div class="step"><span>STEP 1</span><div class="ic">&#129302;</div><b>AI Agent</b><span>proposes tx</span></div>
+    <div class="arrow">&#8594;</div>
+    <div class="step"><span>STEP 2</span><div class="ic">&#128203;</div><b>Policy Engine</b><span>off-chain check</span></div>
+    <div class="arrow">&#8594;</div>
+    <div class="step"><span>STEP 3</span><div class="ic">&#128737;&#65039;</div><b>Gatekeeper</b><span>signs if allowed</span></div>
+    <div class="arrow">&#8594;</div>
+    <div class="step"><span>STEP 4</span><div class="ic">&#9939;</div><b>Squads 2-of-2</b><span>multisig vault</span></div>
+    <div class="arrow">&#8594;</div>
+    <div class="step"><span>STEP 5</span><div class="ic">&#9729;&#65039;</div><b>Solana</b><span>devnet exec</span></div>
+  </div>
+
+  <section class="grid2">
+    <div class="card">
+      <h3>Live policy</h3>
+      <div id="policy"><span style="color:var(--faint)">loading...</span></div>
+    </div>
+    <div class="card">
+      <h3>Simulate a transaction</h3>
+      <label>Destination</label>
+      <select id="dest">
+        <option value="HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z">Vendor A (allowlisted)</option>
+        <option value="7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM">Attacker wallet (blocked)</option>
+        <option value="custom">Custom address</option>
+      </select>
+      <input id="customDest" placeholder="paste address" style="display:none;margin-top:8px">
+      <label>Amount (SOL)</label>
+      <input id="amt" type="number" step="0.01" min="0" value="0.2">
+      <button id="go">Evaluate against policy</button>
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Audit log</h2>
+    <p class="sub">Every evaluation is recorded. Rejected transactions never reach a signature.</p>
+    <div class="card"><ul class="log" id="log"><li style="color:var(--faint)">loading...</li></ul></div>
+  </section>
+</div>
+
+<footer><div class="wrap">TrustLayer - MLH Solana Hackathon 2026 - Devnet only, no real funds.</div></footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const short = a => a.slice(0,6) + '...' + a.slice(-4);
+
+async function loadPolicy(){
+  try{
+    const p = await (await fetch('/api/policies')).json();
+    $('#policy').innerHTML = `
+      <div class="kv"><span class="k">Per-transaction limit</span><span class="v">${p.maxSolPerTransaction} SOL</span></div>
+      <div class="kv"><span class="k">Daily limit</span><span class="v">${p.maxSolPerDay} SOL</span></div>
+      <div class="kv"><span class="k">Allowed programs</span><span class="v">System Program</span></div>
+      <div style="margin-top:14px;color:var(--dim);font-size:13px">Allowlisted destinations</div>
+      <div>${(p.allowedDestinations||[]).map(a=>`<span class="addr ok">${short(a)}</span>`).join('')}</div>
+      <div style="margin-top:10px;color:var(--dim);font-size:13px">Blocked destinations</div>
+      <div>${(p.blockedDestinations||[]).map(a=>`<span class="addr bad">${short(a)}</span>`).join('')}</div>`;
+  }catch(e){ $('#policy').textContent = 'API offline - start src/api/server.js'; }
+}
+
+async function loadLog(){
+  try{
+    const {entries} = await (await fetch('/api/audit')).json();
+    if(!entries.length){ $('#log').innerHTML = '<li style="color:var(--faint)">No evaluations yet.</li>'; return; }
+    $('#log').innerHTML = entries.slice().reverse().map(e=>{
+      const t = new Date(e.ts);
+      const when = t.toTimeString().slice(0,8);
+      const ok = e.decision === 'allowed';
+      const what = `${e.amountSol ?? '?'} SOL -> ${short(e.destination||'')}${e.reasons?.length ? ' - ' + e.reasons[0] : ''}`;
+      return `<li><span class="when">${when}</span><span class="d ${ok?'a':'r'}">${ok?'ALLOWED':'REJECTED'}</span><span class="what">${what}</span></li>`;
+    }).join('');
+  }catch(e){ $('#log').innerHTML = '<li style="color:var(--faint)">API offline</li>'; }
+}
+
+$('#dest').addEventListener('change', e => {
+  $('#customDest').style.display = e.target.value === 'custom' ? 'block' : 'none';
+});
+
+$('#go').addEventListener('click', async () => {
+  const sel = $('#dest').value;
+  const destination = sel === 'custom' ? $('#customDest').value.trim() : sel;
+  const amountSol = parseFloat($('#amt').value);
+  const v = $('#verdict');
+  v.className = 'verdict'; v.innerHTML = '<span style="color:var(--faint)">evaluating...</span>'; v.classList.add('show');
+  try{
+    const d = await (await fetch('/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
+    if(d.allow){
+      v.className = 'verdict allow show';
+      v.innerHTML = `<div class="t">&#10003; Allowed</div><div class="note">Passes every rule. In the live flow the gatekeeper would now sign its approval in the 2-of-2 multisig.</div>`;
+    } else {
+      v.className = 'verdict reject show';
+      v.innerHTML = `<div class="t">&#10007; Rejected</div><ul>${d.reasons.map(r=>`<li>${r}</li>`).join('')}</ul><div class="note">No signature. The transaction can never execute - the agent holds only one of two required keys.</div>`;
+    }
+    loadLog();
+  }catch(e){ v.innerHTML = '<span style="color:var(--red)">API error</span>'; }
+});
+
+loadPolicy(); loadLog(); setInterval(loadLog, 5000);
+</script>
+</body>
+</html>
