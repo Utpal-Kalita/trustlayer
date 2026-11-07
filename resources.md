@@ -11,3 +11,7 @@ Want to get a head start learning how to build on Solana? Check out these resour
 - [Solana Developer Resource List](https://mlh.link/solana-resources) - Comprehensive list of Solana-related resources to get started with your hack.
 
 Source: Hacker Resources section of the official event page, https://events.mlh.com/events/15200-solana-hackathon
+
+## Additional resources
+
+- [Solana 101 & Build with AI (MLH workshop video)](https://www.youtube.com/watch?v=WS53YSMhsvY) - shared by Utpal as extra prep material.
