@@ -50,6 +50,20 @@ We deliberately do **not** claim "keyless" or "fully on-chain policy enforcement
 - The policy engine is deterministic code. An LLM may *explain* a decision in plain
   English, but it can never change a verdict.
 
+### Authorization semantics
+
+- The demo policy sets `oneTimeUse: true`: each authorization is bound to the
+  exact transaction content (program, action, destination, integer lamports) and
+  the policy version. Once executed, that same authorization cannot be replayed;
+  a concurrent duplicate is rejected as in-flight; a failed attempt releases the
+  authorization so a retry works.
+- All budget arithmetic is integer lamports, so an exactly-at-cap request is
+  allowed and one lamport over is rejected.
+- Scope note: this is per-transaction one-time authorization, not a claim of
+  universal replay protection for every possible flow. Cryptographically signed
+  task-authorization tokens (verifiable by third parties) are future work - see
+  the roadmap.
+
 ## Demo scenario (devnet)
 
 1. Owner registers "Research Agent" with: max 0.05 SOL/tx, 0.1 SOL total budget,
@@ -92,3 +106,14 @@ Local validator proof (solana-test-validator with the real Squads v4 program `SQ
 3. **Non-custodial** — the gatekeeper alone (1 of 2 votes) cannot move funds (6008); vault balance unchanged.
 
 Devnet run with public explorer links: pending devnet SOL (public RPC faucets are closed; fund the creator wallet at https://faucet.solana.com, then run `node scripts/spike.mjs`).
+
+## Roadmap (future work)
+
+- Cryptographically signed task-authorization tokens: an authorization artifact
+  bound to task ID, agent, recipient, cap, nonce and expiry that third parties
+  can verify, extending today's content-bound one-time authorizations.
+- Public devnet execution (blocked only by devnet SOL funding).
+- Registration / policy configuration UI (policy is JSON today; a basic editor
+  page exists at dashboard/policy.html).
+- Product-delivery verification (proof the vendor delivered, not just that the
+  executed transaction matches the authorized one).
