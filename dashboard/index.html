@@ -82,7 +82,7 @@
 <body>
 <header><div class="wrap">
   <div class="brand"><span class="mark">T</span>TrustLayer</div>
-  <div class="chip"><span class="pulse"></span>Solana Devnet - Squads 2-of-2</div>
+  <div class="chip"><span class="pulse"></span>Squads 2-of-2 - proof on local validator, devnet pending</div>
 </div></header>
 
 <div class="wrap">
@@ -100,7 +100,7 @@
     <div class="arrow">&#8594;</div>
     <div class="step"><span>STEP 4</span><div class="ic">&#128279;</div><b>Squads 2-of-2</b><span>multisig vault</span></div>
     <div class="arrow">&#8594;</div>
-    <div class="step"><span>STEP 5</span><div class="ic">&#9729;&#65039;</div><b>Solana</b><span>devnet exec</span></div>
+    <div class="step"><span>STEP 5</span><div class="ic">&#9729;&#65039;</div><b>Solana</b><span>on-chain exec</span></div>
   </div>
 
   <section class="grid2">
@@ -139,14 +139,19 @@ const short = a => a.slice(0,6) + '...' + a.slice(-4);
 
 // Offline fallback: the same policy as policies/default.json, evaluated in-browser
 // when the API is not running (e.g. static hosting). Same rules, same verdicts.
-const FALLBACK_POLICY = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"]};
+const FALLBACK_POLICY = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"],"maxSolTotal":0.1,"allowedActions":["transfer"],"expiresAt":null};
 let apiOnline = true;
 function evaluateLocal(policy, tx){
   const reasons = [];
   const amt = Number(tx.amountSol);
   const dest = String(tx.destination||'');
+  const action = String(tx.action||'transfer');
+  if (policy.expiresAt && Date.now() > new Date(policy.expiresAt).getTime()) reasons.push(`policy expired at ${policy.expiresAt}`);
+  if (policy.allowedActions?.length && !policy.allowedActions.includes(action)) reasons.push(`action "${action}" not permitted by policy`);
   if (!(amt > 0)) reasons.push('invalid amount');
   if (amt > policy.maxSolPerTransaction) reasons.push(`amount ${amt} SOL exceeds per-transaction limit ${policy.maxSolPerTransaction} SOL`);
+  const spentTotal = parseFloat(localStorage.getItem('tl_spent') || '0');
+  if (policy.maxSolTotal != null && spentTotal + amt > policy.maxSolTotal) reasons.push(`total budget exceeded: ${spentTotal.toFixed(4)} spent + ${amt} requested > ${policy.maxSolTotal} SOL total`);
   if (policy.blockedDestinations.includes(dest)) reasons.push(`destination ${dest} is explicitly blocked`);
   else if (policy.allowedDestinations.length && !policy.allowedDestinations.includes(dest)) reasons.push(`destination ${dest} not in allowlist`);
   return { allow: reasons.length === 0, reasons };
@@ -161,7 +166,9 @@ async function loadPolicy(){
     {
     $('#policy').innerHTML = `
       <div class="kv"><span class="k">Per-transaction limit</span><span class="v">${p.maxSolPerTransaction} SOL</span></div>
-      <div class="kv"><span class="k">Daily limit</span><span class="v">${p.maxSolPerDay} SOL</span></div>
+      <div class="kv"><span class="k">Total budget</span><span class="v">${p.maxSolTotal ?? p.maxSolPerDay} SOL</span></div>
+      <div class="kv"><span class="k">Permitted actions</span><span class="v">${(p.allowedActions||['transfer']).join(', ')}</span></div>
+      <div class="kv"><span class="k">Expiry</span><span class="v">${p.expiresAt ? new Date(p.expiresAt).toLocaleString() : 'none'}</span></div>
       <div class="kv"><span class="k">Allowed programs</span><span class="v">System Program</span></div>
       <div style="margin-top:14px;color:var(--dim);font-size:13px">Allowlisted destinations</div>
       <div>${(p.allowedDestinations||[]).map(a=>`<span class="addr ok">${short(a)}</span>`).join('')}</div>
@@ -208,6 +215,7 @@ $('#go').addEventListener('click', async () => {
     d = await (await fetch('/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
   } catch(e) {
     d = evaluateLocal(FALLBACK_POLICY, {destination, amountSol});
+    if (d.allow) localStorage.setItem('tl_spent', String(parseFloat(localStorage.getItem('tl_spent')||'0') + amountSol));
     const t = new Date();
     localLog.push({when: t.toTimeString().slice(0,8), decision: d.allow?'allowed':'rejected', what: `${amountSol} SOL -> ${short(destination)}${d.reasons.length?' - '+d.reasons[0]:''}`});
   }
