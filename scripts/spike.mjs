@@ -13,9 +13,7 @@ const RPC = process.env.SOLANA_RPC || 'https://api.devnet.solana.com';
 const conn = new Connection(RPC, 'confirmed');
 let { policy } = loadPolicy();
 if (policy.expiresAt && Date.now() > new Date(policy.expiresAt).getTime()) {
-  console.log('policy expired - re-issuing for a fresh 2h demo window (scripts/issue-policy.mjs)');
-  policy.expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-  fs.writeFileSync('policies/default.json', JSON.stringify(policy, null, 2) + '\n');
+  throw new Error('policy expired at ' + policy.expiresAt + ' - expiry is a real control, not auto-renewed. Re-issue explicitly for a new demo window: node scripts/issue-policy.mjs');
 }
 const audit = new AuditLog();
 console.log('policy loaded:', policy.name, '| per-tx max', policy.maxSolPerTransaction, 'SOL | daily max', policy.maxSolPerDay, 'SOL');
