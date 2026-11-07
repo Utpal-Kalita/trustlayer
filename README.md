@@ -59,10 +59,23 @@ We deliberately do **not** claim "keyless" or "fully on-chain policy enforcement
   authorization so a retry works.
 - All budget arithmetic is integer lamports, so an exactly-at-cap request is
   allowed and one lamport over is rejected.
+- Repeating an identical payment that was already consumed requires explicit
+  owner re-authorization: bump the policy version (`node scripts/issue-policy.mjs --bump`)
+  or update the policy via the authenticated `PUT /api/policies`. It is never
+  silently possible.
 - Scope note: this is per-transaction one-time authorization, not a claim of
   universal replay protection for every possible flow. Cryptographically signed
   task-authorization tokens (verifiable by third parties) are future work - see
   the roadmap.
+
+### Policy editing
+
+`dashboard/policy.html` is a basic editor for the JSON policy. Saving sends
+`PUT /api/policies` to the locally running API, which rewrites
+`policies/default.json` and reloads it live - it changes what future proposals
+are evaluated against, nothing on-chain, and it requires the same
+`x-trustlayer-key` as the signing endpoint. It is not a full registration or
+multi-user config UI (that is roadmap).
 
 ## Demo scenario (devnet)
 
@@ -113,7 +126,7 @@ Devnet run with public explorer links: pending devnet SOL (public RPC faucets ar
   bound to task ID, agent, recipient, cap, nonce and expiry that third parties
   can verify, extending today's content-bound one-time authorizations.
 - Public devnet execution (blocked only by devnet SOL funding).
-- Registration / policy configuration UI (policy is JSON today; a basic editor
-  page exists at dashboard/policy.html).
+- Full registration / multi-user configuration UI (today: JSON policy + the
+  basic authenticated editor at dashboard/policy.html).
 - Product-delivery verification (proof the vendor delivered, not just that the
   executed transaction matches the authorized one).
