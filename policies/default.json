@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "default-hackathon-policy",
+  "maxSolPerTransaction": 0.5,
+  "maxSolPerDay": 1.0,
+  "allowedPrograms": [
+    "11111111111111111111111111111111"
+  ],
+  "allowedDestinations": [
+    "HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"
+  ],
+  "blockedDestinations": [
+    "7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"
+  ],
+  "notes": "Devnet demo policy. allowedDestinations = vendor(s). blockedDestinations = attacker address. Programs: System Program only."
+}
