@@ -13,7 +13,7 @@ import { loadKeys, loadState, runProposal } from '../onchain.js';
 import { Connection } from '@solana/web3.js';
 
 const PORT = process.env.PORT || 8787;
-const { policy } = loadPolicy();
+let { policy } = loadPolicy();
 const audit = new AuditLog();
 
 function json(res, code, obj) {
@@ -35,17 +35,30 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, service: 'trustlayer-api', time: new Date().toISOString() });
   if (req.method === 'GET' && url.pathname === '/api/policies')
     return json(res, 200, policy);
+  if (req.method === 'PUT' && url.pathname === '/api/policies') {
+    const body = await readBody(req);
+    if (!body || typeof body !== 'object' || !(body.maxSolPerTransaction > 0))
+      return json(res, 400, { error: 'invalid policy: maxSolPerTransaction must be positive' });
+    fs.writeFileSync(path.resolve(process.cwd(), 'policies/default.json'), JSON.stringify(body, null, 2) + '\n');
+    policy = loadPolicy().policy;
+    audit.record({ kind: 'policy-update', decision: 'allowed', reasons: [], version: policy.version });
+    return json(res, 200, { ok: true, policy });
+  }
   if (req.method === 'GET' && url.pathname === '/api/audit')
     return json(res, 200, { entries: audit.recent(100) });
   // Full on-chain flow: evaluate -> 2-of-2 approval -> execute. Needs SOLANA_RPC
   // reachable (local validator or funded devnet) and .env keypairs present.
   if (req.method === 'POST' && url.pathname === '/api/propose') {
+    // Signing endpoint: requires the shared API key. Keys never leave this process.
+    const apiKey = process.env.TRUSTLAYER_API_KEY;
+    if (!apiKey) return json(res, 503, { error: 'propose disabled: set TRUSTLAYER_API_KEY in the server environment' });
+    if (req.headers['x-trustlayer-key'] !== apiKey) return json(res, 401, { error: 'missing or invalid x-trustlayer-key' });
     const tx = await readBody(req);
     try {
       const conn = new Connection(process.env.SOLANA_RPC || 'https://api.devnet.solana.com', 'confirmed');
       const keys = loadKeys();
       const state = loadState();
-      const result = await runProposal(conn, keys, state, audit, { destination: tx.destination, amountSol: Number(tx.amountSol) });
+      const result = await runProposal(conn, keys, state, audit, { destination: tx.destination, amountSol: Number(tx.amountSol), nonce: tx.nonce });
       return json(res, 200, { allow: result.decision.allow, reasons: result.decision.reasons, sig: result.sig || null, multisig: result.multisig || null });
     } catch (e) {
       return json(res, 502, { error: 'on-chain flow failed', detail: String(e).slice(0, 300) });
@@ -68,4 +81,4 @@ const server = http.createServer(async (req, res) => {
   return json(res, 404, { error: 'not found' });
 });
 
-server.listen(PORT, () => console.log(`TrustLayer API on http://localhost:${PORT}`));
+server.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`TrustLayer API on http://${process.env.HOST || '127.0.0.1'}:${PORT}`));
