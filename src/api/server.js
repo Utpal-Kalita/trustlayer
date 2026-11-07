@@ -36,6 +36,11 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/policies')
     return json(res, 200, policy);
   if (req.method === 'PUT' && url.pathname === '/api/policies') {
+    // Policy rewrite = owner-level authority (it can re-authorize consumed
+    // transactions by bumping the version), so it requires the same key as
+    // the signing endpoint. Keys never leave this process.
+    if (req.headers['x-trustlayer-key'] !== process.env.TRUSTLAYER_API_KEY)
+      return json(res, 401, { error: 'missing or invalid x-trustlayer-key' });
     const body = await readBody(req);
     if (!body || typeof body !== 'object' || !(body.maxSolPerTransaction > 0))
       return json(res, 400, { error: 'invalid policy: maxSolPerTransaction must be positive' });
