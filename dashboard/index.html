@@ -139,7 +139,7 @@ const short = a => a.slice(0,6) + '...' + a.slice(-4);
 
 // Offline fallback: the same policy as policies/default.json, evaluated in-browser
 // when the API is not running (e.g. static hosting). Same rules, same verdicts.
-const FALLBACK_POLICY = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"],"maxSolTotal":0.1,"allowedActions":["transfer"],"expiresAt":null};
+const FALLBACK_POLICY = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"],"maxSolTotal":0.1,"allowedActions":["transfer"],"expiresAt":new Date(Date.now()+2*3600*1000).toISOString()};
 let apiOnline = true;
 function evaluateLocal(policy, tx){
   const reasons = [];
