@@ -49,6 +49,7 @@
     <label>Permitted actions (comma separated)</label><input id="actions" value="transfer">
     <div class="row">
       <div><label>Valid for (hours)</label><input id="hours" type="number" min="1" value="2"></div>
+      <div><label>API key (required to save; local demo only, never stored)</label><input id="key" type="password" autocomplete="off" placeholder="x-trustlayer-key"></div>
     </div>
     <button id="save">Save policy</button>
     <div class="msg" id="msg"></div>
@@ -71,7 +72,8 @@ $('#save').addEventListener('click', async()=>{
     blockedDestinations: $('#block').value.split('\n').map(s=>s.trim()).filter(Boolean),
     expiresAt: new Date(Date.now() + parseFloat($('#hours').value||2)*3600*1000).toISOString() };
   try{
-    const r = await fetch('/api/policies',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(p)});
+    const r = await fetch('/api/policies',{method:'PUT',headers:{'content-type':'application/json','x-trustlayer-key':$('#key').value},body:JSON.stringify(p)});
+    if(r.status===401){ $('#msg').className='msg err'; $('#msg').textContent='Save rejected (401): wrong or missing API key.'; return; }
     if(!r.ok) throw new Error('api '+r.status);
     $('#msg').className='msg ok'; $('#msg').textContent='Policy saved. New evaluations use it immediately; it expires '+new Date(p.expiresAt).toLocaleString()+'.';
   }catch(e){ $('#msg').className='msg err'; $('#msg').textContent='Save failed - the local API is not running. Start src/api/server.js, then save again.'; }
