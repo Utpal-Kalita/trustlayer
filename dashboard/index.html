@@ -169,6 +169,7 @@ async function loadPolicy(){
       <div>${(p.blockedDestinations||[]).map(a=>`<span class="addr bad">${short(a)}</span>`).join('')}</div>`;
   }
   if (!apiOnline) $('#policy').insertAdjacentHTML('beforeend', '<div style="margin-top:12px;color:var(--faint);font-size:12px">Static demo mode - policy evaluated in-browser. Run src/api/server.js locally for the live backend.</div>');
+  }
 }
 
 async function loadLog(){
