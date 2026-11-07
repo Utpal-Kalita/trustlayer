@@ -12,5 +12,10 @@
   "blockedDestinations": [
     "7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"
   ],
-  "notes": "Devnet demo policy per PRD section 15: max 0.05 SOL/tx, 0.1 SOL total per day, Vendor A allowlisted only, SOL transfers (System Program) only."
+  "notes": "Devnet demo policy per PRD section 15: max 0.05 SOL/tx, 0.1 SOL total budget, Vendor A allowlisted only, SOL transfers (System Program) only, 2-hour expiry from issue.",
+  "maxSolTotal": 0.1,
+  "allowedActions": [
+    "transfer"
+  ],
+  "expiresAt": "2026-11-08T01:25:27.655Z"
 }
