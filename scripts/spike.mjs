@@ -4,12 +4,16 @@ import { Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, LAMP
 import * as multisig from '@sqds/multisig';
 import bs58 from 'bs58';
 import fs from 'node:fs';
+import { loadPolicy, evaluate, AuditLog } from '../src/policy/engine.js';
 
 const { transactions, accounts, types, utils } = multisig;
 const { Permissions, Permission } = types;
 
 const RPC = process.env.SOLANA_RPC || 'https://api.devnet.solana.com';
 const conn = new Connection(RPC, 'confirmed');
+const { policy } = loadPolicy();
+const audit = new AuditLog();
+console.log('policy loaded:', policy.name, '| per-tx max', policy.maxSolPerTransaction, 'SOL | daily max', policy.maxSolPerDay, 'SOL');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -136,6 +140,14 @@ async function main() {
     return txIndex;
   };
 
+  const agentApprove = async (txIndex) => {
+    const atx = transactions.proposalApprove({
+      blockhash: await bh(), feePayer: agent.publicKey, multisigPda,
+      transactionIndex: txIndex, member: agent.publicKey, memo: 'agent vote',
+    });
+    await sendV(atx, [agent], 'agent approve');
+  };
+
   const gatekeeperApprove = async (txIndex) => {
     const atx = transactions.proposalApprove({
       blockhash: await bh(), feePayer: gatekeeper.publicKey, multisigPda,
@@ -163,7 +175,12 @@ async function main() {
   // --- 2. ALLOWED: vault -> vendorA 0.01 SOL (policy passes off-chain) ---
   console.log('\n--- Scenario 1: allowed payment ---');
   const t1 = await propose(vendorA, 0.01 * LAMPORTS_PER_SOL, 'pay vendor 0.01');
-  await gatekeeperApprove(t1);
+  const d1 = evaluate(policy, { destination: vendorA.toBase58(), amountSol: 0.01 }, audit);
+  audit.record({ kind: 'spike', destination: vendorA.toBase58(), amountSol: 0.01, decision: d1.allow ? 'allowed' : 'rejected', reasons: d1.reasons });
+  console.log('POLICY DECISION:', d1.allow ? 'ALLOW' : 'REJECT', d1.reasons);
+  if (!d1.allow) throw new Error('policy unexpectedly rejected the allowed payment');
+  await agentApprove(t1);        // vote 1 of 2: the agent signs its own proposal
+  await gatekeeperApprove(t1);   // vote 2 of 2: gatekeeper signs only after policy passed
   const r1 = await tryExecute(t1, gatekeeper, 'gatekeeper', false);
   console.log('vendorA balance =', (await conn.getBalance(vendorA)) / LAMPORTS_PER_SOL, 'SOL');
   console.log('vault balance   =', (await conn.getBalance(vaultPda)) / LAMPORTS_PER_SOL, 'SOL');
@@ -171,8 +188,13 @@ async function main() {
   // --- 3. BLOCKED: vault -> attacker 0.5 SOL (policy blocks; gatekeeper never approves) ---
   console.log('\n--- Scenario 2: blocked attack (no gatekeeper approval) ---');
   const t2 = await propose(attacker, 0.05 * LAMPORTS_PER_SOL, 'attacker drain attempt');
-  const r2a = await tryExecute(t2, agent, 'agent-alone (blocked tx)', true);
-  // agent tries to re-approve its own proposal to reach threshold
+  const d2 = evaluate(policy, { destination: attacker.toBase58(), amountSol: 0.05 }, audit);
+  audit.record({ kind: 'spike', destination: attacker.toBase58(), amountSol: 0.05, decision: d2.allow ? 'allowed' : 'rejected', reasons: d2.reasons });
+  console.log('POLICY DECISION:', d2.allow ? 'ALLOW' : 'REJECT', d2.reasons);
+  if (d2.allow) throw new Error('policy unexpectedly allowed the attacker transaction');
+  await agentApprove(t2);        // agent votes for its own malicious proposal (1 of 2)
+  const r2a = await tryExecute(t2, agent, 'agent-alone (blocked tx)', true);   // no Execute permission
+  // agent tries to approve a second time to fake the second vote
   try {
     const atx = transactions.proposalApprove({
       blockhash: await bh(), feePayer: agent.publicKey, multisigPda,
@@ -181,8 +203,10 @@ async function main() {
     await sendV(atx, [agent], 'agent second approve');
     console.log('!!! UNEXPECTED: agent could approve twice');
   } catch (e) {
-    console.log('EXPECTED FAIL: agent second approve ->', String(e).slice(0, 200));
+    console.log('EXPECTED FAIL: agent second approve ->', String(e).slice(0, 120));
   }
+  // even with the agent vote, a gatekeeper-less execute stays impossible (1 of 2 approvals)
+  const r2b = await tryExecute(t2, gatekeeper, 'gatekeeper on unapproved proposal', true);
   console.log('attacker balance =', (await conn.getBalance(attacker)) / LAMPORTS_PER_SOL, 'SOL');
 
   // --- 4. NON-CUSTODIAL: gatekeeper alone cannot move funds ---
