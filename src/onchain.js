@@ -32,7 +32,8 @@ async function sendV(conn, tx, signers, label) {
   if ('version' in tx) {           // Squads builders return VersionedTransaction
     tx.sign(signers);
     sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-    await conn.confirmTransaction(sig, 'confirmed');
+    const conf = await conn.confirmTransaction(sig, 'confirmed');
+    if (conf?.value?.err) throw new Error(`${label} failed on chain: ${JSON.stringify(conf.value.err)}`);
   } else {                          // legacy web3 Transaction
     sig = await sendAndConfirmTransaction(conn, tx, signers, { commitment: 'confirmed' });
   }
@@ -87,12 +88,37 @@ export async function ensureFunded(conn, keys) {
 }
 
 // The full TrustLayer flow for one requested payment. Returns {decision, sig?}.
-export async function runProposal(conn, keys, state, audit, { destination, amountSol }) {
-  const { policy } = loadPolicy();
-  const decision = evaluate(policy, { destination, amountSol, action: 'transfer' }, audit);
-  audit.record({ kind: 'propose', destination, amountSol, decision: decision.allow ? 'allowed' : 'rejected', reasons: decision.reasons });
-  if (!decision.allow) return { decision, sig: null };
+// Decode a SystemProgram transfer instruction back to its semantic content.
+// The policy is evaluated against what the transaction ACTUALLY does, never
+// against caller-supplied descriptions.
+function decodeTransferInstruction(ix) {
+  const programId = ix.programId.toBase58();
+  if (programId !== SystemProgram.programId.toBase58()) return { programId, action: 'unknown', destination: null, amountSol: null };
+  const view = Buffer.from(ix.data);
+  const tag = view.readUInt32LE(0);
+  if (tag !== 2) return { programId, action: 'system-other', destination: null, amountSol: null }; // 2 = Transfer
+  const lamports = Number(view.readBigUInt64LE(4));
+  return { programId, action: 'transfer', destination: ix.keys[1].pubkey.toBase58(), amountSol: lamports / LAMPORTS_PER_SOL };
+}
 
+export async function runProposal(conn, keys, state, audit, { destination, amountSol, nonce }) {
+  const { policy } = loadPolicy();
+
+  // Build the exact instruction first, then evaluate its DECODED content.
+  const vaultProbe = SystemProgram.transfer({ fromPubkey: Keypair.generate().publicKey, toPubkey: new PublicKey(destination), lamports: Math.round(amountSol * LAMPORTS_PER_SOL) });
+  const decoded = decodeTransferInstruction(vaultProbe);
+  const decision = evaluate(policy, { ...decoded, nonce }, audit);
+  const rid = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  if (!decision.allow) {
+    audit.record({ kind: 'propose', id: rid, nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'rejected', reasons: decision.reasons });
+    return { decision, sig: null };
+  }
+  // Reserve budget synchronously (no awaits since evaluation) before any chain work.
+  audit.record({ kind: 'propose', id: rid, nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], reserved: true });
+
+  // Any failure after the budget reservation must release it, or retries
+  // would be blocked by a permanently held reservation.
+  try {
   await ensureFunded(conn, keys);
   state = await ensureMultisig(conn, keys, state);
   const multisigPda = new PublicKey(state.multisigPda);
@@ -122,6 +148,10 @@ export async function runProposal(conn, keys, state, audit, { destination, amoun
   await sendV(conn, a2, [keys.gatekeeper], 'gatekeeper approve (2/2)');
   const etx = await transactions.vaultTransactionExecute({ connection: conn, blockhash: await bh(), feePayer: keys.gatekeeper.publicKey, multisigPda, transactionIndex: txIndex, member: keys.gatekeeper.publicKey });
   const sig = await sendV(conn, etx, [keys.gatekeeper], 'execute');
-  audit.record({ kind: 'execute', destination, amountSol, decision: 'allowed', reasons: [], executed: true, sig });
+  audit.record({ kind: 'execute', id: rid, nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], executed: true, sig });
   return { decision, sig, multisig: state.multisigPda, txIndex: Number(txIndex) };
-      }
+  } catch (err) {
+    audit.record({ kind: 'execute', id: rid, nonce, released: true, note: String(err).slice(0, 200) });
+    throw err;
+  }
+}
