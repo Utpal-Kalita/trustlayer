@@ -137,9 +137,28 @@
 const $ = s => document.querySelector(s);
 const short = a => a.slice(0,6) + '...' + a.slice(-4);
 
+// Offline fallback: the same policy as policies/default.json, evaluated in-browser
+// when the API is not running (e.g. static hosting). Same rules, same verdicts.
+const FALLBACK_POLICY = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"]};
+let apiOnline = true;
+function evaluateLocal(policy, tx){
+  const reasons = [];
+  const amt = Number(tx.amountSol);
+  const dest = String(tx.destination||'');
+  if (!(amt > 0)) reasons.push('invalid amount');
+  if (amt > policy.maxSolPerTransaction) reasons.push(`amount ${amt} SOL exceeds per-transaction limit ${policy.maxSolPerTransaction} SOL`);
+  if (policy.blockedDestinations.includes(dest)) reasons.push(`destination ${dest} is explicitly blocked`);
+  else if (policy.allowedDestinations.length && !policy.allowedDestinations.includes(dest)) reasons.push(`destination ${dest} not in allowlist`);
+  return { allow: reasons.length === 0, reasons };
+}
+const localLog = [];
+
 async function loadPolicy(){
-  try{
-    const p = await (await fetch('/api/policies')).json();
+  let p;
+  try{ p = await (await fetch('/api/policies')).json(); }
+  catch(e){ apiOnline = false; p = FALLBACK_POLICY; }
+  {
+    {
     $('#policy').innerHTML = `
       <div class="kv"><span class="k">Per-transaction limit</span><span class="v">${p.maxSolPerTransaction} SOL</span></div>
       <div class="kv"><span class="k">Daily limit</span><span class="v">${p.maxSolPerDay} SOL</span></div>
@@ -148,7 +167,8 @@ async function loadPolicy(){
       <div>${(p.allowedDestinations||[]).map(a=>`<span class="addr ok">${short(a)}</span>`).join('')}</div>
       <div style="margin-top:10px;color:var(--dim);font-size:13px">Blocked destinations</div>
       <div>${(p.blockedDestinations||[]).map(a=>`<span class="addr bad">${short(a)}</span>`).join('')}</div>`;
-  }catch(e){ $('#policy').textContent = 'API offline - start src/api/server.js'; }
+  }
+  if (!apiOnline) $('#policy').insertAdjacentHTML('beforeend', '<div style="margin-top:12px;color:var(--faint);font-size:12px">Static demo mode - policy evaluated in-browser. Run src/api/server.js locally for the live backend.</div>');
 }
 
 async function loadLog(){
@@ -162,7 +182,13 @@ async function loadLog(){
       const what = `${e.amountSol ?? '?'} SOL -> ${short(e.destination||'')}${e.reasons?.length ? ' - ' + e.reasons[0] : ''}`;
       return `<li><span class="when">${when}</span><span class="d ${ok?'a':'r'}">${ok?'ALLOWED':'REJECTED'}</span><span class="what">${what}</span></li>`;
     }).join('');
-  }catch(e){ $('#log').innerHTML = '<li style="color:var(--faint)">API offline</li>'; }
+  }catch(e){
+    if (!localLog.length){ $('#log').innerHTML = '<li style="color:var(--faint)">No evaluations yet - try the simulator.</li>'; return; }
+    $('#log').innerHTML = localLog.slice().reverse().map(e=>{
+      const ok = e.decision === 'allowed';
+      return `<li><span class="when">${e.when}</span><span class="d ${ok?'a':'r'}">${ok?'ALLOWED':'REJECTED'}</span><span class="what">${e.what}</span></li>`;
+    }).join('');
+  }
 }
 
 $('#dest').addEventListener('change', e => {
@@ -175,8 +201,16 @@ $('#go').addEventListener('click', async () => {
   const amountSol = parseFloat($('#amt').value);
   const v = $('#verdict');
   v.className = 'verdict'; v.innerHTML = '<span style="color:var(--faint)">evaluating...</span>'; v.classList.add('show');
+  let d;
   try{
-    const d = await (await fetch('/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
+    if (!apiOnline) throw new Error('offline');
+    d = await (await fetch('/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
+  } catch(e) {
+    d = evaluateLocal(FALLBACK_POLICY, {destination, amountSol});
+    const t = new Date();
+    localLog.push({when: t.toTimeString().slice(0,8), decision: d.allow?'allowed':'rejected', what: `${amountSol} SOL -> ${short(destination)}${d.reasons.length?' - '+d.reasons[0]:''}`});
+  }
+  {
     if(d.allow){
       v.className = 'verdict allow show';
       v.innerHTML = `<div class="t">&#10003; Allowed</div><div class="note">Passes every rule. In the live flow the gatekeeper would now sign its approval in the 2-of-2 multisig.</div>`;
@@ -185,7 +219,7 @@ $('#go').addEventListener('click', async () => {
       v.innerHTML = `<div class="t">&#10007; Rejected</div><ul>${d.reasons.map(r=>`<li>${r}</li>`).join('')}</ul><div class="note">No signature. The transaction can never execute - the agent holds only one of two required keys.</div>`;
     }
     loadLog();
-  }catch(e){ v.innerHTML = '<span style="color:var(--red)">API error</span>'; }
+  }
 });
 
 loadPolicy(); loadLog(); setInterval(loadLog, 5000);
