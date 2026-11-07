@@ -6,3 +6,5 @@ dist/
 .next/
 *.log
 .DS_Store
+test-ledger/
+data/
