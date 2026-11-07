@@ -81,3 +81,14 @@ npm install
 node scripts/genkeys.mjs   # creates .env with fresh devnet keypairs
 node scripts/spike.mjs     # runs the on-chain proof on devnet
 ```
+
+
+## Verification status
+
+Local validator proof (solana-test-validator with the real Squads v4 program `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` cloned from devnet) — all three scenarios pass (`SOLANA_RPC=http://localhost:8899 node scripts/spike.mjs`):
+
+1. **Allowed payment** — policy engine returns ALLOW; agent approves (vote 1), gatekeeper approves (vote 2), vault transfer executes; vendor received 0.01 SOL.
+2. **Blocked attack** — policy returns REJECT (blocked destination); agent alone cannot execute (Squads error 6004, no Execute permission), cannot double-vote (6010), and even the gatekeeper cannot execute an unapproved proposal (6008). Attacker balance stayed 0.
+3. **Non-custodial** — the gatekeeper alone (1 of 2 votes) cannot move funds (6008); vault balance unchanged.
+
+Devnet run with public explorer links: pending devnet SOL (public RPC faucets are closed; fund the creator wallet at https://faucet.solana.com, then run `node scripts/spike.mjs`).
