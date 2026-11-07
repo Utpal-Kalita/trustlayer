@@ -1,8 +1,8 @@
 {
   "version": 1,
   "name": "default-hackathon-policy",
-  "maxSolPerTransaction": 0.5,
-  "maxSolPerDay": 1.0,
+  "maxSolPerTransaction": 0.05,
+  "maxSolPerDay": 0.1,
   "allowedPrograms": [
     "11111111111111111111111111111111"
   ],
@@ -12,5 +12,5 @@
   "blockedDestinations": [
     "7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"
   ],
-  "notes": "Devnet demo policy. allowedDestinations = vendor(s). blockedDestinations = attacker address. Programs: System Program only."
+  "notes": "Devnet demo policy per PRD section 15: max 0.05 SOL/tx, 0.1 SOL total per day, Vendor A allowlisted only, SOL transfers (System Program) only."
 }
