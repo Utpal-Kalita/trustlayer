@@ -31,6 +31,9 @@ export class AuditLog {
       .filter(e => e.decision === 'allowed' && e.executed === true && new Date(e.ts).getTime() >= windowStart)
       .reduce((s, e) => s + (e.amountSol || 0), 0);
   }
+  spentTotal() {
+    return this.spentToday(0);
+  }
 }
 
 // Evaluate one proposed transfer against the policy.
@@ -41,15 +44,26 @@ export function evaluate(policy, tx, audit) {
   const dest = String(tx.destination || '');
   const amt = Number(tx.amountSol);
   const prog = String(tx.programId || '11111111111111111111111111111111');
+  const action = String(tx.action || 'transfer');
+
+  if (policy.expiresAt && Date.now() > new Date(policy.expiresAt).getTime())
+    reasons.push(`policy expired at ${policy.expiresAt}`);
+
+  if (policy.allowedActions?.length && !policy.allowedActions.includes(action))
+    reasons.push(`action "${action}" not permitted by policy`);
 
   if (!(amt > 0)) reasons.push(`invalid amount: ${tx.amountSol}`);
   if (amt > policy.maxSolPerTransaction)
     reasons.push(`amount ${amt} SOL exceeds per-transaction limit ${policy.maxSolPerTransaction} SOL`);
 
   const windowStart = Date.now() - DAY_MS;
-  const spent = audit ? audit.spentToday(windowStart) : 0;
-  if (spent + amt > policy.maxSolPerDay)
-    reasons.push(`daily limit exceeded: ${spent.toFixed(4)} spent + ${amt} requested > ${policy.maxSolPerDay} SOL/day`);
+  const spentToday = audit ? audit.spentToday(windowStart) : 0;
+  if (policy.maxSolPerDay != null && spentToday + amt > policy.maxSolPerDay)
+    reasons.push(`daily limit exceeded: ${spentToday.toFixed(4)} spent + ${amt} requested > ${policy.maxSolPerDay} SOL/day`);
+
+  const spentTotal = audit ? audit.spentTotal() : 0;
+  if (policy.maxSolTotal != null && spentTotal + amt > policy.maxSolTotal)
+    reasons.push(`total budget exceeded: ${spentTotal.toFixed(4)} spent + ${amt} requested > ${policy.maxSolTotal} SOL total`);
 
   if (policy.allowedPrograms?.length && !policy.allowedPrograms.includes(prog))
     reasons.push(`program ${prog} not in allowlist`);
