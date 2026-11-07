@@ -9,6 +9,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadPolicy, evaluate, AuditLog } from '../policy/engine.js';
+import { loadKeys, loadState, runProposal } from '../onchain.js';
+import { Connection } from '@solana/web3.js';
 
 const PORT = process.env.PORT || 8787;
 const { policy } = loadPolicy();
@@ -35,6 +37,20 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, policy);
   if (req.method === 'GET' && url.pathname === '/api/audit')
     return json(res, 200, { entries: audit.recent(100) });
+  // Full on-chain flow: evaluate -> 2-of-2 approval -> execute. Needs SOLANA_RPC
+  // reachable (local validator or funded devnet) and .env keypairs present.
+  if (req.method === 'POST' && url.pathname === '/api/propose') {
+    const tx = await readBody(req);
+    try {
+      const conn = new Connection(process.env.SOLANA_RPC || 'https://api.devnet.solana.com', 'confirmed');
+      const keys = loadKeys();
+      const state = loadState();
+      const result = await runProposal(conn, keys, state, audit, { destination: tx.destination, amountSol: Number(tx.amountSol) });
+      return json(res, 200, { allow: result.decision.allow, reasons: result.decision.reasons, sig: result.sig || null, multisig: result.multisig || null });
+    } catch (e) {
+      return json(res, 502, { error: 'on-chain flow failed', detail: String(e).slice(0, 300) });
+    }
+  }
   if (req.method === 'POST' && url.pathname === '/api/evaluate') {
     const tx = await readBody(req);
     const decision = evaluate(policy, tx, audit);
