@@ -110,11 +110,11 @@ export async function runProposal(conn, keys, state, audit, { destination, amoun
   const decision = evaluate(policy, { ...decoded, nonce }, audit);
   const rid = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   if (!decision.allow) {
-    audit.record({ kind: 'propose', id: rid, nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'rejected', reasons: decision.reasons });
+    audit.record({ kind: 'propose', id: rid, nonce: decision.authId ?? nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'rejected', reasons: decision.reasons });
     return { decision, sig: null };
   }
   // Reserve budget synchronously (no awaits since evaluation) before any chain work.
-  audit.record({ kind: 'propose', id: rid, nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], reserved: true });
+  audit.record({ kind: 'propose', id: rid, nonce: decision.authId ?? nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], reserved: true });
 
   // Any failure after the budget reservation must release it, or retries
   // would be blocked by a permanently held reservation.
@@ -148,10 +148,10 @@ export async function runProposal(conn, keys, state, audit, { destination, amoun
   await sendV(conn, a2, [keys.gatekeeper], 'gatekeeper approve (2/2)');
   const etx = await transactions.vaultTransactionExecute({ connection: conn, blockhash: await bh(), feePayer: keys.gatekeeper.publicKey, multisigPda, transactionIndex: txIndex, member: keys.gatekeeper.publicKey });
   const sig = await sendV(conn, etx, [keys.gatekeeper], 'execute');
-  audit.record({ kind: 'execute', id: rid, nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], executed: true, sig });
+  audit.record({ kind: 'execute', id: rid, nonce: decision.authId ?? nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], executed: true, sig });
   return { decision, sig, multisig: state.multisigPda, txIndex: Number(txIndex) };
   } catch (err) {
-    audit.record({ kind: 'execute', id: rid, nonce, released: true, note: String(err).slice(0, 200) });
+    audit.record({ kind: 'execute', id: rid, nonce: decision.authId ?? nonce, released: true, note: String(err).slice(0, 200) });
     throw err;
   }
-}
+                }
