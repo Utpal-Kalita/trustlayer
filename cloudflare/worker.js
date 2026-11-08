@@ -251,7 +251,7 @@ export class PolicyGate {
         let proposal = null, aiError = null;
         try {
           const r1 = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', { max_tokens: 128, messages: [
-            { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or {"error":"why"} if the task is not a clear SOL payment. Never invent an address; use only an address present in this prompt or literally given in the task.' },
+            { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or, if the task is not a clear SOL payment, {"error":"<one short sentence giving the actual reason>"}. Never invent an address; use only an address present in this prompt or literally given in the task.' },
             { role: 'user', content: task },
           ] });
           const text = String((r1 && r1.response) || '');
@@ -577,7 +577,7 @@ export default {
         let proposal = null, aiError = null;
         try {
           const r1 = await groqChat(env, { json: true, max_tokens: 512, messages: [
-            { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or {"error":"why"} if the task is not a clear SOL payment. Never invent an address; use only an address present in this prompt or literally given in the task.' },
+            { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or, if the task is not a clear SOL payment, {"error":"<one short sentence giving the actual reason>"}. Never invent an address; use only an address present in this prompt or literally given in the task.' },
             { role: 'user', content: task },
           ] });
           const rawResp = r1 && r1.response; const text = typeof rawResp === 'string' ? rawResp : JSON.stringify(rawResp !== undefined ? rawResp : r1).slice(0, 400);
