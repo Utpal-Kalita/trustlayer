@@ -552,8 +552,10 @@ export default {
         const s = await gate().fetch(new Request('https://do/execute', { method: 'POST', body: await req.text() }));
         return new Response(s.body, { status: s.status, headers: { ...CORS, 'content-type': 'application/json' } });
       }
-      if (url.pathname === '/api/state')
-        return gate().fetch(new Request('https://do/state'));
+      if (url.pathname === '/api/state') {
+        const s = await gate().fetch(new Request('https://do/state'));
+        return new Response(s.body, {status:s.status,headers:{...CORS,'content-type':'application/json'}});
+      }
       if (url.pathname === '/api/refresh')
         return gate().fetch(new Request('https://do/refresh'));
       if (url.pathname === '/api/propose' && req.method === 'POST') {
