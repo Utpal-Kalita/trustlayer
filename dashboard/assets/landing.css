@@ -94,7 +94,7 @@
   #api .ui-code__pre { white-space: pre-wrap; font-size: 11px; }
   #api .at-corner { --ax: 16px; right: 16px; }
 }
-@media (max-width: 359px) { header.nav .nav__bar > .nav__actions { display: none !important; } header.nav .nav__logo { min-width: 0; } }
+@media (max-width: 359px) { header.nav .nav__bar > .nav__actions .btn { padding: 6px 10px; font-size: 13px; white-space: nowrap; } header.nav .nav__logo { min-width: 0; } }
 
 /* Targeted mobile review fixes: preserve layout while keeping controls and diagram labels readable. */
 @media (max-width: 359px) {
