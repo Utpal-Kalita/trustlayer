@@ -1,10 +1,11 @@
 name = "trustlayer-api-cf"
-main = "src/worker.js"
+main = "worker.js"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
 
 [durable_objects]
 bindings = [{ name = "POLICY_GATE", class_name = "PolicyGate" }]
+code_update_strategy = { mode = "immediate" }
 
 [[migrations]]
 tag = "v1"
