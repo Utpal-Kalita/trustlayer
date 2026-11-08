@@ -1,7 +1,9 @@
 # Hosted signing — durable spend-state design (prototype)
 
-Status: **prototype, local tests only. No hosted secrets, no hosted signing enabled.**
-This document records how TrustLayer can keep spend/replay controls durable on
+Status: **deployed on the Cloudflare worker - see the 2026-11-08 addenda below.**
+The worker hosts the AGENT key only and approves 1-of-2; the gatekeeper key is
+never hosted, and funds move only after its independent 2-of-2 vote.
+This document records how TrustLayer keeps spend/replay controls durable on
 hosts with ephemeral disks (Render free, serverless workers), and the limits
 that remain.
 
@@ -11,8 +13,9 @@ The policy engine's budget and replay state (spend counters, reservations,
 consumed authorizations) currently lives in a local append-only log
 (`data/audit.log`). On a host whose disk resets on redeploy/restart, that state
 silently resets — an attacker or a retried request could spend past the policy
-budget. The hosted API therefore runs read-only today (propose/policy-update
-return 503).
+budget. Before this design, the hosted API ran read-only
+(propose/policy-update returned 503); the addenda record the current hosted
+1-of-2 flow.
 
 ## Design: the chain is the ledger
 
