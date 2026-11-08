@@ -173,3 +173,8 @@ legend { font-weight: 650; margin-bottom: 12px; }
 
 /* hosted (live worker) mode hides local-only controls */
 [data-backend="hosted"] .local-only { display: none !important; }
+[data-backend]:not([data-backend="hosted"]) .hosted-only, html:not([data-backend]) .hosted-only { display: none !important; }
+textarea { font: 15px/1.5 var(--font); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; width: 100%; resize: vertical; }
+textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.ai-box { border-left: 3px solid var(--accent); padding: 10px 14px; background: var(--surface-2); border-radius: var(--r); margin: 12px 0; }
+.ai-box b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
