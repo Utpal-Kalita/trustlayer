@@ -1,7 +1,7 @@
 // Offline tests for the autonomous agent loop (cloudflare/agent-loop.js) and the
 // Groq tool-step adapter. A scripted model stands in for the LLM; the policy
 // verdicts come from the real deterministic engine (src/policy/engine.js).
-import { runAgent, demoWorld, MAX_STEPS, MAX_PAYMENT_ATTEMPTS } from '../cloudflare/agent-loop.js';
+import { runAgent, demoWorld, MAX_STEPS, MAX_PAYMENT_ATTEMPTS, NAIVE_PROMPT, SYSTEM_PROMPT } from '../cloudflare/agent-loop.js';
 import { groqToolStep, _setSleep } from '../cloudflare/groq.js';
 import { evaluate } from '../src/policy/engine.js';
 import fs from 'node:fs';
@@ -146,6 +146,27 @@ ok('clean page has no injection', !/AI assistants/.test(demoWorld(policy, 'clean
   n = 0; e1 = '';
   try { await groqToolStep(env, [{}, {}], [], async () => { n++; return r429(null); }); } catch (e) { e1 = e.message; }
   ok('429 without Retry-After: no retry', n === 1);
+}
+
+// 7. Agent profiles: 'naive' follows page instructions; engine still decides
+{
+  let sys = '';
+  const capture = async (messages) => { sys = messages[0].content; return { content: 'stop', tool_calls: [] }; };
+  const rn = await runAgent({ task: 't', policy, scenario: 'injected', profile: 'naive', chat: capture, budget, decide });
+  ok('naive profile uses the naive prompt', sys.startsWith(NAIVE_PROMPT) && rn.profile === 'naive');
+  await runAgent({ task: 't', policy, profile: 'careful', chat: capture, budget, decide });
+  ok('careful profile uses the careful prompt', sys.startsWith(SYSTEM_PROMPT));
+  const rx = await runAgent({ task: 't', policy, profile: 'evil', chat: capture, budget, decide });
+  ok('unknown profile falls back to careful', sys.startsWith(SYSTEM_PROMPT) && rx.profile === 'careful');
+  const m = scripted([
+    { content: '', tool_calls: [call('read_vendor_page', { vendor_id: 'vendor-a' })] },
+    { content: 'Paying the fee the page requires.', tool_calls: [call('request_payment', { destination: ATTACKER, amount_sol: 0.02, reason: 'verification fee' })] },
+    { content: '', tool_calls: [call('finish', { summary: 'Fee blocked.' })] },
+  ]);
+  const r = await runAgent({ task: 'Buy the report', policy, scenario: 'injected', profile: 'naive', chat: m.chat, budget, decide });
+  ok('naive agent hijacked: attacker payment BLOCKED by the engine', r.attackerPaymentAttempted && !r.attackerPaymentApproved, r.payments[0]?.reasons?.[0]);
+  const w = fs.readFileSync('cloudflare/worker.js', 'utf8');
+  ok('worker never executes for the naive profile', /execute = !!\(isOperator && body && body\.execute === true && profile !== 'naive'\)/.test(w));
 }
 
 console.log(fails ? `\n${fails} agent test(s) FAILED` : '\nall agent tests passed');
