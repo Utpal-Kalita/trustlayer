@@ -195,7 +195,6 @@ export async function bootHosted() {
   $('#btn-signout').hidden = true;
   $('[data-tab="agents"]').textContent = 'Policy';
   $('#h-agents').textContent = 'Policy and proposals';
-  setupPropose();
-  try { await load(); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
+  try { await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
   setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 10000);
 }
