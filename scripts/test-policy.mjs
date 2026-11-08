@@ -44,6 +44,23 @@ ok('retry after failure allowed', evaluate(policy, { destination: V, amountSol: 
 const expired = { ...policy, expiresAt: new Date(Date.now() - 1000).toISOString() };
 ok('expired policy rejects', !evaluate(expired, { destination: V, amountSol: 0.01 }, audit).allow);
 
+// scope namespacing: spend on another cluster or under another policy version
+// never counts against this scope's budgets; unscoped (legacy) entries are
+// invisible to a scoped log; history itself is preserved for all scopes.
+fs.rmSync(FILE, { force: true });
+const devnet = new AuditLog(FILE, { cluster: 'api.devnet.solana.com', policyVersion: 1 });
+const local = new AuditLog(FILE, { cluster: 'localhost:8899', policyVersion: 1 });
+const dda = evaluate(policy, { destination: V, amountSol: 0.04 }, devnet);
+devnet.record({ id: 's1', nonce: dda.authId, destination: V, amountSol: 0.04, decision: 'allowed', executed: true, kind: 'execute' });
+const ddb = evaluate(policy, { destination: V, amountSol: 0.02 }, devnet);
+devnet.record({ id: 's2', nonce: ddb.authId, destination: V, amountSol: 0.02, decision: 'allowed', executed: true, kind: 'execute' });
+local.record({ id: 's3', destination: V, amountSol: 0.05, decision: 'allowed', executed: true, kind: 'execute' });
+ok('same-scope spend counts: 0.06 spent + 0.05 > 0.1 rejected', !evaluate(policy, { destination: V, amountSol: 0.05 }, devnet).allow);
+ok('other-cluster spend ignored: 0.06 + 0.01 fits (0.11 + 0.01 would not)', evaluate(policy, { destination: V, amountSol: 0.01 }, devnet).allow);
+ok('local scope sees only its own spend: 0.05 + 0.05 at cap allowed', evaluate(policy, { destination: V, amountSol: 0.05 }, local).allow);
+const bumped = new AuditLog(FILE, { cluster: 'api.devnet.solana.com', policyVersion: 2 });
+ok('new policy version starts a fresh budget namespace', evaluate(policy, { destination: V, amountSol: 0.05 }, bumped).allow);
+
 fs.rmSync(FILE, { force: true });
 console.log(failures ? `${failures} FAILURES` : 'all tests passed');
 process.exit(failures ? 1 : 0);
