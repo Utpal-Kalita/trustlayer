@@ -12,11 +12,11 @@
   "blockedDestinations": [
     "7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"
   ],
-  "notes": "Devnet demo policy per PRD section 15: max 0.05 SOL/tx, 0.1 SOL total budget, Vendor A allowlisted only, SOL transfers (System Program) only, 2-hour expiry from issue. One-time use: an executed authorization (bound to the exact transaction content + policy version) cannot be replayed; retries after failure stay allowed.",
+  "notes": "Devnet demo policy per PRD section 15: max 0.05 SOL/tx, 0.1 SOL total budget, Vendor A allowlisted only, SOL transfers (System Program) only, demo expiry extended to 2026-11-22 23:59 IST for judging. One-time use: an executed authorization (bound to the exact transaction content + policy version) cannot be replayed; retries after failure stay allowed.",
   "maxSolTotal": 0.1,
   "allowedActions": [
     "transfer"
   ],
-  "expiresAt": "2026-11-08T18:29:00.000Z",
+  "expiresAt": "2026-11-22T18:29:00.000Z",
   "oneTimeUse": true
 }
