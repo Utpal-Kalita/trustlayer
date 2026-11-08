@@ -13,8 +13,15 @@ import { loadKeys, loadState, runProposal } from '../onchain.js';
 import { Connection } from '@solana/web3.js';
 
 const PORT = process.env.PORT || 8787;
+// Read-only hosts (ephemeral free tiers) serve policy reads and dry-run
+// evaluations only: spend/replay state on an ephemeral filesystem is not
+// durable, so signing and policy mutation are refused rather than silently
+// resetting. Stateful execution runs locally (scripts/spike.mjs or this
+// server with durable disk).
+const READ_ONLY = process.env.TRUSTLAYER_READ_ONLY === '1';
+const rpcHost = new URL(process.env.SOLANA_RPC || 'https://api.devnet.solana.com').host;
 let { policy } = loadPolicy();
-const audit = new AuditLog();
+const audit = new AuditLog('data/audit.log', { cluster: rpcHost, policyVersion: policy.version ?? 0 });
 
 function json(res, code, obj) {
   const body = JSON.stringify(obj, null, 2);
@@ -31,6 +38,17 @@ function readBody(req) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+  // CORS preflight for the dashboard hosted on GitHub Pages (cross-origin PUT
+  // with the x-trustlayer-key header).
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET,POST,PUT,OPTIONS',
+      'access-control-allow-headers': 'content-type,x-trustlayer-key',
+      'access-control-max-age': '86400',
+    });
+    return res.end();
+  }
   if (req.method === 'GET' && url.pathname === '/api/health')
     return json(res, 200, { ok: true, service: 'trustlayer-api', time: new Date().toISOString() });
   if (req.method === 'GET' && url.pathname === '/api/policies')
@@ -39,13 +57,17 @@ const server = http.createServer(async (req, res) => {
     // Policy rewrite = owner-level authority (it can re-authorize consumed
     // transactions by bumping the version), so it requires the same key as
     // the signing endpoint. Keys never leave this process.
-    if (req.headers['x-trustlayer-key'] !== process.env.TRUSTLAYER_API_KEY)
+    const apiKey = process.env.TRUSTLAYER_API_KEY;
+    if (READ_ONLY || !apiKey)
+      return json(res, 503, { error: 'policy updates disabled on this host' });
+    if (req.headers['x-trustlayer-key'] !== apiKey)
       return json(res, 401, { error: 'missing or invalid x-trustlayer-key' });
     const body = await readBody(req);
     if (!body || typeof body !== 'object' || !(body.maxSolPerTransaction > 0))
       return json(res, 400, { error: 'invalid policy: maxSolPerTransaction must be positive' });
     fs.writeFileSync(path.resolve(process.cwd(), 'policies/default.json'), JSON.stringify(body, null, 2) + '\n');
     policy = loadPolicy().policy;
+    audit.scope = { cluster: rpcHost, policyVersion: policy.version ?? 0 };
     audit.record({ kind: 'policy-update', decision: 'allowed', reasons: [], version: policy.version });
     return json(res, 200, { ok: true, policy });
   }
@@ -54,7 +76,9 @@ const server = http.createServer(async (req, res) => {
   // Full on-chain flow: evaluate -> 2-of-2 approval -> execute. Needs SOLANA_RPC
   // reachable (local validator or funded devnet) and .env keypairs present.
   if (req.method === 'POST' && url.pathname === '/api/propose') {
-    // Signing endpoint: requires the shared API key. Keys never leave this process.
+    // Signing endpoint: requires durable state and the shared API key.
+    if (READ_ONLY)
+      return json(res, 503, { error: 'signing disabled on this ephemeral host: execution needs durable spend/replay state - run scripts/spike.mjs or this API on a machine with a persistent disk' });
     const apiKey = process.env.TRUSTLAYER_API_KEY;
     if (!apiKey) return json(res, 503, { error: 'propose disabled: set TRUSTLAYER_API_KEY in the server environment' });
     if (req.headers['x-trustlayer-key'] !== apiKey) return json(res, 401, { error: 'missing or invalid x-trustlayer-key' });
@@ -86,4 +110,4 @@ const server = http.createServer(async (req, res) => {
   return json(res, 404, { error: 'not found' });
 });
 
-server.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`TrustLayer API on http://${process.env.HOST || '127.0.0.1'}:${PORT}`));
+server.listen(PORT, process.env.HOST || '0.0.0.0', () => console.log(`TrustLayer API on http://${process.env.HOST || '0.0.0.0'}:${PORT}`));
