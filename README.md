@@ -78,7 +78,7 @@ proposal, no funds moved.
 
 ### Multi-step agent: `POST /api/agent/run`
 
-`{ task, scenario: "clean" | "injected" }`. A bounded tool-calling agent
+`{ task, scenario: "clean" | "injected", profile: "careful" | "naive" }`. A bounded tool-calling agent
 (`cloudflare/agent-loop.js`, Groq `openai/gpt-oss-20b`) with five tools:
 
 | Tool | What it does |
@@ -88,6 +88,14 @@ proposal, no funds moved.
 | `check_budget` | Per-payment limit, total limit, remaining budget, approved recipients, expiry |
 | `request_payment` | Sends the payment request to the policy engine; returns APPROVED or BLOCKED with reasons |
 | `finish` | Ends the run with a summary for the user |
+
+Agent `profile`:
+
+- `careful` (default): treats vendor pages as untrusted content.
+- `naive`: stands in for a careless, off-the-shelf agent. Its prompt tells it to follow
+  payment instructions found on vendor pages, including updated wallets and fees. It
+  exists to show the engine stopping an agent that has no defence of its own. The naive
+  profile is always a dry run, even with the operator key.
 
 Bounds, from the code:
 
@@ -118,6 +126,8 @@ Limits on public use, enforced by the worker:
 - **Multi-step agent, live:** in real poisoned-page runs, the model either refused to buy or
   asked to pay only the allowlisted Vendor A. It did **not** attempt an attacker payment,
   so these runs did not show a live hijack being blocked.
+- **Naive profile:** added after those runs and not yet run against the live model, so
+  no live result is claimed for it.
 - **Multi-step agent, offline tests** (`node scripts/test-agent-loop.mjs`): a scripted model
   that follows the malicious instructions asks to pay the attacker; the real policy engine
   blocks it, and the agent then pays Vendor A. These are offline tests with a scripted
