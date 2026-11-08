@@ -559,7 +559,11 @@ export default {
         const body = await req.json().catch(() => null);
         const task = String((body && body.task) || '').slice(0, 500).trim();
         const scenario = body && body.scenario === 'injected' ? 'injected' : 'clean';
-        const execute = !!(isOperator && body && body.execute === true);
+        // profile 'naive' = a careless agent that follows vendor-page instructions.
+        // It is always a dry run, even for the operator: it exists to show the
+        // engine blocking a hijacked agent, never to move funds.
+        const profile = body && body.profile === 'naive' ? 'naive' : 'careful';
+        const execute = !!(isOperator && body && body.execute === true && profile !== 'naive');
         if (!task) return Response.json({ ok: false, error: 'task (string) required' }, { status: 400, headers: H });
         const ip = req.headers.get('cf-connecting-ip') || 'unknown';
         globalThis.__aiRunRate = globalThis.__aiRunRate || {};
@@ -570,7 +574,7 @@ export default {
         const policy = JSON.parse(env.POLICY_JSON);
         let quotaHit = false;
         const out = await runAgent({
-          task, policy, scenario, dryRun: !execute,
+          task, policy, scenario, profile, dryRun: !execute,
           chat: (messages, tools) => groqToolStep(env, messages, tools),
           allowStep: async () => {
             if (isOperator) return true;
