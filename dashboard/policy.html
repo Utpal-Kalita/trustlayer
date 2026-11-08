@@ -57,7 +57,7 @@
 </section>
 </div>
 <script>
-const API_BASE = location.hostname.endsWith('github.io') ? 'https://trustlayer-api.onrender.com' : '';
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('onrender.com')) ? '' : 'https://trustlayer-api-p58e.onrender.com';
 
 const $ = s => document.querySelector(s);
 const FALLBACK = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"maxSolTotal":0.1,"allowedActions":["transfer"],"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"]};
