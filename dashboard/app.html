@@ -35,7 +35,7 @@
     <nav class="tabs" aria-label="Console sections">
       <a href="#overview" data-tab="overview">Overview</a>
       <a href="#agents" data-tab="agents">Agents</a>
-      <a href="#propose" data-tab="propose">Propose</a>
+      <a href="#propose" data-tab="propose">Check a payment</a>
       <a href="#history" data-tab="history">History</a>
       <a href="#security" data-tab="security">Security events</a>
     </nav>
@@ -61,13 +61,13 @@
     <!-- Agents -->
     <section class="view" id="view-agents" aria-labelledby="h-agents" hidden>
       <div class="head row"><div><h1 id="h-agents">Agents</h1><p class="muted">Each agent proposes from one Squads vault and is bound by one policy.</p></div>
-        <button class="btn primary" id="btn-new-agent" type="button">Register an agent</button></div>
+        <button class="btn primary local-only" id="btn-new-agent" type="button">Register an agent</button></div>
       <div id="agents-list"></div>
     </section>
 
     <!-- Propose -->
     <section class="view" id="view-propose" aria-labelledby="h-propose" hidden>
-      <div class="head"><h1 id="h-propose">Propose a transaction</h1><p class="muted">Send a proposal exactly as an agent would. Agents call the same endpoints with their <code>x-agent-key</code>.</p></div>
+      <div class="head"><h1 id="h-propose">Check a payment</h1><p class="muted">Check a payment against the policy, exactly as the agent&rsquo;s proposal is checked. Nothing is signed from this page: only the agent proposes, and only the owner-side gatekeeper casts the second vote.</p></div>
       <div class="grid2 propose">
         <form class="panel" id="propose-form" novalidate>
           <div class="field"><label for="p-agent">Agent</label><select id="p-agent" required></select></div>
@@ -79,12 +79,11 @@
           <div class="field"><label for="p-recipient">Recipient address</label><input id="p-recipient" class="mono" list="p-recipients" autocomplete="off" required spellcheck="false"><datalist id="p-recipients"></datalist></div>
           <div class="field two">
             <div><label for="p-amount">Amount (SOL)</label><input id="p-amount" type="number" min="0" step="0.001" value="0.01" required></div>
-            <div><label for="p-action">Action</label><select id="p-action"><option value="sol_transfer">SOL transfer</option><option value="spl_transfer">SPL token transfer</option></select></div>
+            <div class="local-only"><label for="p-action">Action</label><select id="p-action"><option value="sol_transfer">SOL transfer</option><option value="spl_transfer">SPL token transfer</option></select></div>
           </div>
-          <div class="field"><label for="p-nonce">Task nonce <span class="muted">(optional, one-time use)</span></label><input id="p-nonce" class="mono" autocomplete="off"></div>
+          <div class="field local-only"><label for="p-nonce">Task nonce <span class="muted">(optional, one-time use)</span></label><input id="p-nonce" class="mono" autocomplete="off"></div>
           <div class="actions">
-            <button class="btn" type="submit" data-mode="evaluate">Evaluate only</button>
-            <button class="btn primary" type="submit" data-mode="execute" id="btn-exec">Execute through Squads</button>
+            <button class="btn primary" type="submit" data-mode="evaluate">Evaluate</button>
           </div>
           <p class="fine muted" id="exec-note"></p>
         </form>

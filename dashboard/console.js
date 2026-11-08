@@ -63,7 +63,7 @@ addEventListener('hashchange', showTab);
 
 // ------------------------------------------------------------- render helpers
 const STATUS = {
-  executed: ['ok', 'Executed'], approved: ['ok', 'Approved'], reserved: ['warn', 'Executing'],
+  executed: ['ok', 'Executed'], approved: ['ok', 'Approved'], reserved: ['warn', 'Reserved'], proposed: ['warn', 'Awaiting gatekeeper'],
   rejected: ['bad', 'Blocked'], failed: ['bad', 'Not executed'],
 };
 const statusPill = (s) => { const [k, l] = STATUS[s] || ['', s]; return `<span class="pill ${k}">${esc(l)}</span>`; };
@@ -99,7 +99,7 @@ async function loadOverview() {
   const ex = S.health?.execution || {};
   $('#exec-panel').innerHTML = `<div class="panel-h"><h2>Execution path</h2><span class="pill ${ex.enabled ? 'ok' : 'warn'}">${ex.enabled ? 'Squads 2-of-2 ready' : 'Evaluate-only'}</span></div>
     <p class="muted">${ex.enabled
-      ? `Approved proposals execute from vault <a class="link mono" href="https://explorer.solana.com/address/${esc(ex.vault)}?cluster=devnet" target="_blank" rel="noopener">${esc(short(ex.vault))}</a> in multisig <a class="link mono" href="https://explorer.solana.com/address/${esc(ex.multisig)}?cluster=devnet" target="_blank" rel="noopener">${esc(short(ex.multisig))}</a>. The agent casts vote 1, TrustLayer's gatekeeper casts vote 2 only after every check passes.`
+      ? `Agents propose from vault <a class="link mono" href="https://explorer.solana.com/address/${esc(ex.vault)}?cluster=devnet" target="_blank" rel="noopener">${esc(short(ex.vault))}</a> in multisig <a class="link mono" href="https://explorer.solana.com/address/${esc(ex.multisig)}?cluster=devnet" target="_blank" rel="noopener">${esc(short(ex.multisig))}</a>. This server holds only the agent key: it casts vote 1 of 2. The gatekeeper verifies the on-chain transaction and casts vote 2 of 2 from the owner's machine (scripts/gatekeeper-execute.mjs).`
       : `This server can evaluate proposals but will not sign: ${esc(ex.reason || 'execution disabled')}.`}
       Simulation: <b>${esc(S.health?.simulation)}</b> on ${esc(S.health?.cluster)}.</p>`;
 }
@@ -175,7 +175,7 @@ $('#btn-new-agent').onclick = () => {
   const d = $('#dlg-agent'); policyFields($('#a-policy'));
   const v = S.health?.execution?.vault;
   $('#a-wallet').value = v || '';
-  $('#a-wallet-note').textContent = v ? 'Defaults to this server\'s Squads vault, so approved proposals can execute.' : 'This server has no Squads vault; the agent can be evaluated but not executed here.';
+  $('#a-wallet-note').textContent = v ? 'Defaults to this server\'s Squads vault, so the agent can propose there.' : 'This server has no Squads vault; the agent can be evaluated but not executed here.';
   $('.err', d).textContent = ''; d.showModal();
 };
 $('#agent-form').addEventListener('submit', async (e) => {
@@ -230,9 +230,9 @@ $$('[data-preset]').forEach(b => b.onclick = () => {
 });
 $('#propose-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const mode = e.submitter?.dataset.mode || 'evaluate';
+  const mode = 'evaluate'; // the console never proposes on chain
   const btns = $$('#propose-form button[type=submit]'); btns.forEach(b => b.disabled = true);
-  $('#decision').innerHTML = `<p class="muted empty">${mode === 'execute' ? 'Inspecting, simulating, checking policy, then running the Squads vote and execution on devnet. This takes a few seconds.' : 'Inspecting, simulating and checking policy…'}</p>`;
+  $('#decision').innerHTML = '<p class="muted empty">Inspecting, simulating and checking policy…</p>';
   try {
     const body = { agentId: $('#p-agent').value, recipient: $('#p-recipient').value.trim(), amountSol: Number($('#p-amount').value), action: $('#p-action').value };
     if ($('#p-nonce').value.trim()) body.nonce = $('#p-nonce').value.trim();
@@ -253,12 +253,9 @@ function renderDecision(d, mode) {
 }
 function syncExec() {
   const ex = S.health?.execution || {};
-  const a = S.agents.find(x => x.id === $('#p-agent').value);
-  const can = ex.enabled && a && a.wallet_address === ex.vault;
-  $('#btn-exec').disabled = !can;
-  $('#exec-note').textContent = can ? 'Execute runs every check again on the server, then the Squads vote and execution on devnet.'
-    : ex.enabled ? 'This agent\'s vault is not managed by this server, so it can be evaluated but not executed here.'
-    : `Execution is off on this server: ${ex.reason || 'no signing setup'}. Evaluation works.`;
+  $('#exec-note').textContent = ex.enabled
+    ? `Agents propose with their own key (POST /api/transactions/execute). This server casts the agent's vote 1 of 2 on vault ${short(ex.vault)}; the owner-side gatekeeper casts vote 2 of 2.`
+    : `Agents cannot propose on this server: ${ex.reason || 'no agent key'}. Evaluation works.`;
 }
 $('#p-agent').addEventListener('change', syncExec);
 
@@ -317,7 +314,16 @@ async function boot() {
   showTab(); await refresh();
 }
 (async () => {
-  try { S.health = await api('GET', '/api/health'); $('#btn-demo').hidden = !S.health.demoLogin; } catch { /* offline */ }
+  // Backend: the live Cloudflare worker (default), or a local TrustLayer API
+  // when this page is served by one, unless ?backend=hosted is given.
+  const want = new URLSearchParams(location.search).get('backend');
+  let local = null;
+  if (want !== 'hosted') { try { local = await api('GET', '/api/health'); } catch { /* no local API */ } }
+  if (!local || local.service !== 'trustlayer-api' || !('demoLogin' in local)) {
+    const { bootHosted } = await import('./hosted.js');
+    return bootHosted();
+  }
+  S.health = local; $('#btn-demo').hidden = !S.health.demoLogin;
   if (S.token) { try { await api('GET', '/api/me'); return boot(); } catch { /* expired */ } }
   signOut();
 })();

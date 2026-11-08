@@ -6,17 +6,24 @@
 import { inspectProposal, InspectionError } from './inspect/inspector.js';
 import { simulateInspection, connection, SIMULATION_MODE } from './inspect/simulate.js';
 import { evaluatePolicy, authorizationId, fmtSol } from './policy/checks.js';
-import { loadKeys, loadState, executeSquadsTransfer } from './onchain.js';
+import { loadAgentKey, loadState, proposeSquadsTransfer, proposalStatus } from './onchain.js';
 
+// Same memo namespace as the Cloudflare worker, so its chain-derived budget
+// counts spend proposed here too (conservative: never under-counts).
+const MEMO_POLICY_ID = process.env.TRUSTLAYER_MEMO_POLICY_ID || 'default-hackathon-policy';
+
+// Agent-side proposing needs only the agent key and the verified multisig.
+// The gatekeeper and owner keys are never loaded by this server.
 export function executionStatus(agent) {
-  let keys = null, state = loadState();
-  try { keys = loadKeys(); } catch { /* no keys on this host */ }
-  if (process.env.TRUSTLAYER_READ_ONLY === '1') return { enabled: false, reason: 'execution is disabled on this read-only host' };
-  if (!keys) return { enabled: false, reason: 'no agent/gatekeeper keys configured (run node scripts/genkeys.mjs)' };
-  if (!state.vaultPda) return { enabled: false, reason: 'no Squads multisig yet (run node scripts/setup-demo.mjs)', keys };
+  const state = loadState();
+  if (process.env.TRUSTLAYER_READ_ONLY === '1') return { enabled: false, reason: 'proposing is disabled on this read-only host' };
+  let key = null;
+  try { key = loadAgentKey(); } catch { /* malformed */ }
+  if (!key) return { enabled: false, reason: 'no AGENT_SECRET configured on this server' };
+  if (!state.vaultPda) return { enabled: false, reason: 'no multisig in data/state.json' };
   if (agent && agent.wallet_address !== state.vaultPda)
-    return { enabled: false, reason: `this server's Squads vault is ${state.vaultPda}; agent wallet ${agent.wallet_address} is not managed here`, keys, state };
-  return { enabled: true, keys, state, vault: state.vaultPda, multisig: state.multisigPda };
+    return { enabled: false, reason: `this server proposes for vault ${state.vaultPda}; agent wallet ${agent.wallet_address} is not that vault` };
+  return { enabled: true, agentKey: key, state, vault: state.vaultPda, multisig: state.multisigPda };
 }
 
 export async function authorize(store, agent, proposal, { execute = false, source = 'agent-api', simulate = simulateInspection } = {}) {
@@ -67,22 +74,50 @@ export async function authorize(store, agent, proposal, { execute = false, sourc
 
   if (!result.allow || !execute) return { transaction: t, ...pick(result), events };
 
-  // 4. Execute through Squads. Any failure releases the reservation.
+  // 4. Agent side of Squads: vault transaction + proposal + approval 1 of 2.
+  //    Funds do not move. The owner-side gatekeeper verifies the on-chain
+  //    transaction and casts vote 2 of 2 (scripts/gatekeeper-execute.mjs).
+  //    The reservation stays held until the chain shows execution or rejection.
   const ex = executionStatus(agent);
   if (!ex.enabled) {
     store.updateTransaction(t.id, { status: 'failed', rejection_reason: ex.reason });
-    return { transaction: store.updateTransaction(t.id, {}), ...pick(result), allow: false, decision: 'NOT EXECUTED', reasons: [ex.reason], events };
+    return { transaction: store.updateTransaction(t.id, {}), ...pick(result), allow: false, decision: 'NOT PROPOSED', reasons: [ex.reason], events };
   }
   try {
     const transfers = inspection.instructions.filter(i => i.action === 'sol_transfer').map(i => ({ to: i.to, lamports: i.lamports }));
-    const out = await executeSquadsTransfer(connection(), ex.keys, ex.state, transfers, { memo: `trustlayer:${t.id.slice(0, 8)}` });
-    const done = store.updateTransaction(t.id, { status: 'executed', transaction_signature: out.sig, execution: out });
-    return { transaction: done, ...pick(result), events, signature: out.sig };
+    const memo = `trustlayer:${MEMO_POLICY_ID}:v${policy.version}:${t.id.replace(/-/g, '').slice(0, 24)}`;
+    const out = await proposeSquadsTransfer(connection(), ex.agentKey, ex.state, transfers, memo);
+    const gatekeeperCommand = `node scripts/gatekeeper-execute.mjs ${out.transactionIndex} check` +
+      (transfers.length === 1 ? ` --expect ${transfers[0].to} ${transfers[0].lamports}` : '') + ` --expect-memo ${memo}`;
+    const done = store.updateTransaction(t.id, { status: 'proposed', squads: { ...out, gatekeeperCommand } });
+    return { transaction: done, ...pick(result), decision: 'PROPOSED', events, transactionIndex: out.transactionIndex, gatekeeperCommand,
+      note: 'Agent approved 1 of 2. Funds have not moved. The owner-side gatekeeper must verify and approve 2 of 2.' };
   } catch (e) {
     const msg = String(e.message || e).slice(0, 300);
-    const failed = store.updateTransaction(t.id, { status: 'failed', rejection_reason: `Execution failed after approval: ${msg}` });
+    const failed = store.updateTransaction(t.id, { status: 'failed', rejection_reason: `Proposal failed after approval: ${msg}` });
     events.push(store.insertSecurityEvent({ agentId: agent.id, eventType: 'execution_failed', description: msg, transactionId: t.id }));
     return { transaction: failed, ...pick(result), decision: 'FAILED', allow: false, reasons: [msg], events };
+  }
+}
+
+// Reconcile proposals with the chain: executed -> executed (+signature),
+// rejected/cancelled -> failed (reservation released). Throttled.
+let lastSync = 0;
+export async function syncProposals(store, { force = false } = {}) {
+  if (!force && Date.now() - lastSync < 10_000) return;
+  lastSync = Date.now();
+  const pending = store.db.transactions.filter(t => t.status === 'proposed' && t.squads?.transactionIndex);
+  if (!pending.length) return;
+  const state = loadState();
+  for (const t of pending) {
+    try {
+      const st = await proposalStatus(connection(), state, t.squads.transactionIndex);
+      if (st.status === 'executed') store.updateTransaction(t.id, { status: 'executed', transaction_signature: st.signature, squads: { ...t.squads, approvals: st.approvals } });
+      else if (st.status === 'rejected' || st.status === 'cancelled') {
+        store.updateTransaction(t.id, { status: 'failed', rejection_reason: `Gatekeeper ${st.status} the proposal on chain; reservation released.` });
+        store.insertSecurityEvent({ agentId: t.agent_id, eventType: 'proposal_rejected', description: `Squads proposal #${t.squads.transactionIndex} was ${st.status} on chain.`, transactionId: t.id });
+      }
+    } catch { /* RPC down: keep the reservation held (fail closed) */ }
   }
 }
 
@@ -103,7 +138,8 @@ export function overview(store, userId) {
     agents: agents.length,
     activeAgents: agents.filter(a => a.status === 'active').length,
     proposed: txs.length,
-    approved: txs.filter(t => t.status === 'approved' || t.status === 'executed' || t.status === 'reserved').length,
+    approved: txs.filter(t => ['approved', 'executed', 'reserved', 'proposed'].includes(t.status)).length,
+    awaitingGatekeeper: txs.filter(t => t.status === 'proposed').length,
     executed: txs.filter(t => t.status === 'executed').length,
     rejected: txs.filter(t => t.status === 'rejected').length,
     authorizedLamports: txs.filter(t => t.status === 'executed').reduce((s, t) => s + t.amount_lamports, 0),

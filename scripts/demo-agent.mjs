@@ -1,7 +1,9 @@
 // Plays the AI agent in the PRD section 15 demo. It only holds its own
 // x-agent-key: it can propose, it cannot approve, change policy or move funds.
 // Run after setup-demo.mjs:  node scripts/demo-agent.mjs [--execute]
-//   --execute  send proposals to /api/transactions/execute (real Squads flow on devnet)
+//   --execute  send proposals to /api/transactions/execute: an approved one becomes a
+//              Squads proposal with the agent's vote 1 of 2. Funds move only after the
+//              owner runs the printed gatekeeper command (vote 2 of 2).
 import fs from 'node:fs';
 
 const API = process.env.TRUSTLAYER_API || 'http://localhost:8787';
@@ -20,5 +22,5 @@ for (const [name, body] of scenarios) {
   if (!r.ok) { console.log('  error:', d.error); continue; }
   console.log(`  ${d.decision}  ${d.explanation}`);
   for (const c of d.checks || []) console.log(`    ${c.pass === true ? '✓' : c.pass === false ? '✗' : '–'} ${c.label}: ${c.reason}`);
-  if (d.signature) console.log(`  executed: https://explorer.solana.com/tx/${d.signature}?cluster=devnet`);
+  if (d.transactionIndex) console.log(`  Squads proposal #${d.transactionIndex}: agent approved 1 of 2, funds not moved.\n  owner-side gatekeeper, verify then approve:\n    ${d.gatekeeperCommand}\n    ${d.gatekeeperCommand.replace(' check ', ' approve ')}`);
 }

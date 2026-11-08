@@ -14,9 +14,8 @@ import bs58 from 'bs58';
 import { ed25519 } from '@noble/curves/ed25519';
 import { Store, publicAgent } from '../db/store.js';
 import { isAddress, solToLamports } from '../inspect/inspector.js';
-import { authorize, overview, executionStatus } from '../service.js';
+import { authorize, overview, executionStatus, syncProposals } from '../service.js';
 import { SIMULATION_MODE, RPC_URL } from '../inspect/simulate.js';
-import { loadKeys } from '../onchain.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const store = new Store();
@@ -37,11 +36,8 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-function adminUser() {
-  let wallet = 'admin';
-  try { wallet = loadKeys().owner.publicKey.toBase58(); } catch { /* no keys */ }
-  return store.upsertUser(wallet);
-}
+// Script / demo owner. Not a wallet: this server never loads the owner key.
+function adminUser() { return store.upsertUser('demo-owner'); }
 function ownerFrom(req) {
   const auth = req.headers.authorization || '';
   if (auth.startsWith('Bearer ')) { const u = store.sessionUser(auth.slice(7)); if (u) return u; }
@@ -119,7 +115,7 @@ const route = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' 
 route('GET', '/api/health', () => ({
   ok: true, service: 'trustlayer-api', time: new Date().toISOString(),
   cluster: new URL(RPC_URL).host, simulation: SIMULATION_MODE,
-  execution: (({ enabled, reason, vault, multisig }) => ({ enabled, reason, vault, multisig }))(executionStatus(null)),
+  execution: (({ enabled, reason, vault, multisig }) => ({ enabled, reason, vault, multisig, model: 'agent proposes + approves 1 of 2 here; gatekeeper approves 2 of 2 owner-side (scripts/gatekeeper-execute.mjs)' }))(executionStatus(null)),
   demoLogin: process.env.TRUSTLAYER_DEMO_LOGIN === '1',
 }));
 
@@ -218,13 +214,17 @@ route('POST', '/api/transactions/evaluate', async (req) => {
 });
 route('POST', '/api/transactions/execute', async (req) => {
   const body = await readBody(req);
+  // Only the agent itself may start the Squads flow. Owner sessions (and the
+  // open demo sign-in) can evaluate, never propose on chain.
+  if (!req.headers['x-agent-key']) throw new HttpError(403, 'execute requires the agent\'s x-agent-key; the console can only evaluate');
   const { agent, source } = proposer(req, body);
   // Ignore any client claim of prior approval: the full pipeline runs again here.
   delete body.approved; delete body.evaluationId;
   return strip(await authorize(store, agent, body, { execute: true, source }));
 });
-route('GET', '/api/transactions', (req, _p, url) => {
+route('GET', '/api/transactions', async (req, _p, url) => {
   const user = requireOwner(req);
+  await syncProposals(store);
   const names = Object.fromEntries(store.listAgents(user.id).map(a => [a.id, a.name]));
   return { transactions: store.listTransactions({ userId: user.id, agentId: url.searchParams.get('agentId') || undefined }).map(t => ({ ...t, agent_name: names[t.agent_id] })) };
 });
@@ -233,7 +233,7 @@ route('GET', '/api/security-events', (req) => {
   const names = Object.fromEntries(store.listAgents(user.id).map(a => [a.id, a.name]));
   return { events: store.listSecurityEvents({ userId: user.id }).map(e => ({ ...e, agent_name: names[e.agent_id] })) };
 });
-route('GET', '/api/overview', (req) => overview(store, requireOwner(req).id));
+route('GET', '/api/overview', async (req) => { const u = requireOwner(req); await syncProposals(store); return overview(store, u.id); });
 
 // Read-only JSON-RPC proxy for edge clients (whitelisted read methods only).
 route('POST', '/api/rpc', async (req) => {

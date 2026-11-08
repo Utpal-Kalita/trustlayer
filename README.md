@@ -14,28 +14,50 @@ multisig** (agent key + gatekeeper key). Neither key can move funds alone.
 
 Built for the **MLH Solana Hackathon, Nov 6-8 2026**. Solana devnet only. Product spec: [prd.md](prd.md).
 
-## Quick start
+## Live backend and key separation
+
+The console (`dashboard/app.html`) talks to the verified Cloudflare backend
+`https://trustlayer-api-cf.adzeo2.workers.dev` by default, through its public routes
+only: health, policies, audit, state, evaluate. Contract: [docs/INTEGRATION.md](docs/INTEGRATION.md).
+
+| Who | Holds | Can do |
+|---|---|---|
+| Browser (landing page, console) | nothing | read policy and audit, dry-run evaluate |
+| Hosted agent (worker) | AGENT key only | re-check policy, create the Squads proposal, approve 1 of 2 |
+| Owner's machine | GATEKEEPER key (and OWNER key) | `scripts/gatekeeper-execute.mjs`: read the vault tx from chain, verify, approve 2 of 2, execute |
+
+Pay through the live backend:
+
+```bash
+# 1. hosted agent proposes (API key stays in this terminal, never in the browser)
+TRUSTLAYER_API_KEY=... node scripts/hosted-propose.mjs <destination> <amountSol>
+# 2. owner-side gatekeeper: verify, then approve 2 of 2 (it prints the exact commands)
+node scripts/gatekeeper-execute.mjs <txIndex> check   --expect <destination> <lamports> --expect-memo <memo>
+node scripts/gatekeeper-execute.mjs <txIndex> approve --expect <destination> <lamports> --expect-memo <memo>
+```
+
+Uses the verified multisig `BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC` (vault
+`93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe`). Nothing here creates a multisig or
+requests airdrops; fund the vault by hand (docs/DEVNET-FUNDING.md).
+
+## Local API (optional)
+
+A full local backend with agent registration, per-agent policies, instruction decoding
+and devnet simulation. It follows the same key split: the server loads only
+`AGENT_SECRET`, proposes and casts vote 1 of 2. It never loads the gatekeeper or owner
+key. Proposing requires the agent's own `x-agent-key`; owner and demo sessions can only
+evaluate.
 
 ```bash
 npm install
-npm test                                   # policy engine + 40 API tests, offline
-
-# console only (evaluate, no signing): open http://localhost:8787
-TRUSTLAYER_DEMO_LOGIN=1 TRUSTLAYER_API_KEY=dev npm start
-
-# full devnet flow (signing through Squads)
-node scripts/genkeys.mjs                   # devnet keypairs -> .env (gitignored); fund the OWNER key
-TRUSTLAYER_DEMO_LOGIN=1 TRUSTLAYER_API_KEY=dev npm start
-TRUSTLAYER_API_KEY=dev npm run demo:setup  # multisig + vault + "Research Agent" with the PRD policy
-npm run demo:agent                         # the agent runs the 3 PRD demo scenarios (evaluate)
-npm run demo:agent -- --execute            # ...and executes the approved one on devnet
+npm test                                   # policy engine + API tests, offline
+TRUSTLAYER_DEMO_LOGIN=1 TRUSTLAYER_API_KEY=dev npm start     # console at http://localhost:8787/app.html
+TRUSTLAYER_API_KEY=dev npm run demo:setup  # registers "Research Agent" on the verified vault
+npm run demo:agent                         # the 3 PRD scenarios (evaluate)
+npm run demo:agent -- --execute            # approved one -> Squads proposal, vote 1 of 2; prints the gatekeeper command
 ```
 
-- `/` is the landing page. `/app.html` is the console: sign in with Phantom (it signs a
-  one-time message), or with the demo owner when `TRUSTLAYER_DEMO_LOGIN=1`.
-- In the console you can register agents, edit their permissions, deactivate them and
-  rotate their keys. You can propose transactions, read the history with the reason for
-  every check, and see security events.
+The console uses the local API when the page is served by it; `?backend=hosted` forces the live worker.
 
 ## How a proposal is decided
 
@@ -49,16 +71,18 @@ agent --x-agent-key--> POST /api/transactions/{evaluate|execute}
                   action allowed · per-tx limit · cumulative limit · recipient allowlisted ·
                   nonce unused (optional) · simulation succeeded
    4. reserve     spend reserved in the same synchronous step as the check (no race)
-   5. execute     agent creates the Squads vault tx + proposal, votes 1/2
-                  gatekeeper reads the vault tx BACK FROM CHAIN, refuses unless it matches
-                  the approved transfers exactly, votes 2/2
-                  the real Squads execute instruction is simulated, then sent
+   5. propose     agent creates the Squads vault tx (transfers + memo) + proposal, votes 1/2
+                  -- separate process, owner's machine --
+                  gatekeeper-execute.mjs reads the vault tx BACK FROM CHAIN, refuses anything
+                  it cannot classify or that does not match --expect / --expect-memo,
+                  votes 2/2 and executes
    6. record      transaction row (checks, simulation logs, policy version, signature)
                   + a security event per failed check
 ```
 
 `execute` re-runs steps 1 to 4 from the raw proposal. It never trusts `approved: true`
-or an earlier evaluation. A failed execution releases its reservation.
+or an earlier evaluation. A failed proposal releases its reservation; an open proposal
+keeps it until the chain shows it executed (reconciled on read) or rejected.
 
 ## API
 
@@ -73,7 +97,7 @@ or an earlier evaluation. A failed execution releases its reservation.
 | GET | `/api/policies/:agentId` | owner | The agent's active policy and committed spend |
 | PATCH | `/api/policies/:id` | owner | Update; bumps the version, applies to the next proposal |
 | POST | `/api/transactions/evaluate` | agent / owner | Full decision, nothing signed |
-| POST | `/api/transactions/execute` | agent / owner | Full decision again, then Squads execution |
+| POST | `/api/transactions/execute` | agent only | Full decision again, then Squads proposal + vote 1 of 2 |
 | GET | `/api/transactions` | owner | History, every attempt |
 | GET | `/api/security-events` | owner | Violations and owner actions |
 | GET | `/api/overview`, `/api/health` | owner / public | Dashboard counts, server status |
@@ -98,9 +122,9 @@ or `{ "transaction": "<base64 serialized tx>" }`. Policy body:
 
 ## Honest trust model
 
-- The gatekeeper **does** hold a signing key. It cannot move funds by itself: the
-  threshold is 2-of-2, so TrustLayer can only *block*, never *take*. New multisigs make
-  the owner the Squads config authority, so the owner can revoke or replace the members.
+- The gatekeeper **does** hold a signing key, on the owner's machine, never on a hosted
+  server. The hosted agent key alone cannot move funds, and neither can the gatekeeper
+  key alone: the threshold is 2-of-2.
 - Policy rules are evaluated **off-chain** at the approval step. On chain, the Squads
   threshold enforces the outcome: a proposal the gatekeeper does not approve cannot execute.
 - The policy engine is deterministic code. No LLM is in the decision path.
@@ -117,10 +141,14 @@ or `{ "transaction": "<base64 serialized tx>" }`. Policy body:
 - `src/inspect/` - instruction decoder, devnet simulation
 - `src/policy/checks.js` - deterministic policy checks
 - `src/db/store.js` - data store
-- `src/onchain.js` - Squads multisig + gatekeeper-verified execution
+- `src/onchain.js` - agent-side Squads proposing (agent key only)
+- `scripts/gatekeeper-execute.mjs` - owner-side verification, vote 2 of 2, execution
+- `scripts/hosted-propose.mjs` - ask the hosted agent to propose
+- `dashboard/hosted.js` - console mode for the live worker (public routes only)
 - `dashboard/` - landing page (`index.html`) and console (`app.html`)
 - `scripts/` - tests, demo setup, demo agent, devnet spike
-- `src/policy/engine.js`, `scripts/spike.mjs`, `cloudflare/` - the first devnet proof and the earlier single-policy engine, kept for reference
+- `cloudflare/` - the live worker (hosted agent + durable policy gate)
+- `src/policy/engine.js`, `scripts/spike.mjs` - the first devnet proof, kept for reference
 
 ## Verification status
 

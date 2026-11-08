@@ -72,6 +72,8 @@ ok('garbage transaction bytes are BLOCKED', r.body.decision === 'BLOCKED');
 // --- Execute boundary
 r = await call('POST', '/api/transactions/execute', { recipient: UNKNOWN, amountSol: 0.01, approved: true }, agentKey);
 ok('execute ignores client approved:true and re-evaluates', r.body.decision === 'BLOCKED' && !r.body.transaction.transaction_signature, r.body);
+r = await call('POST', '/api/transactions/execute', { agentId: agent.id, recipient: VENDOR_A, amountSol: 0.01 }, owner);
+ok('owner/demo sessions cannot trigger execution', r.status === 403, r.body);
 r = await call('POST', '/api/transactions/execute', { recipient: VENDOR_A, amountSol: 0.01 }, agentKey);
 ok('execute without a signing setup never reports success', r.body.allow === false && r.body.transaction.status === 'failed' && !r.body.transaction.transaction_signature, r.body);
 ok('failed execution releases its reservation', store.spentLamports(agent.policy.id) === 0);
@@ -157,6 +159,13 @@ r = await call('GET', `/api/agents/${agent.id}`, null, me);
 ok('another owner\'s agent is not visible', r.status === 404);
 r = await call('POST', '/api/auth/verify', { wallet: kp.publicKey.toBase58(), signature: bs58.encode(sig) });
 ok('a signed challenge cannot be replayed', r.status === 400);
+
+// --- Key separation: the server code never reads the gatekeeper or owner key
+const srcFiles = ['src/onchain.js', 'src/service.js', 'src/api/server.js', 'src/db/store.js', 'src/inspect/inspector.js', 'src/inspect/simulate.js', 'src/policy/checks.js'];
+ok('server code never loads GATEKEEPER_SECRET or OWNER_SECRET', srcFiles.every(f => !/GATEKEEPER_SECRET|OWNER_SECRET/.test(fs.readFileSync(f, 'utf8'))));
+const dash = ['dashboard/index.html', 'dashboard/app.html', 'dashboard/console.js'].map(f => fs.readFileSync(f, 'utf8')).join('\n');
+ok('browser code holds no API key header or secrets', !/x-trustlayer-key|TRUSTLAYER_API_KEY|_SECRET/.test(dash));
+ok('no airdrop or multisig creation in server code', srcFiles.every(f => !/requestAirdrop|multisigCreate/.test(fs.readFileSync(f, 'utf8'))));
 
 server.close();
 fs.rmSync(tmp, { recursive: true, force: true });

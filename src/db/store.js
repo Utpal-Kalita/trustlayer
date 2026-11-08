@@ -102,7 +102,7 @@ export class Store {
   }
 
   // ---- transactions ------------------------------------------------------
-  // status: evaluated-approved | rejected | reserved | executed | failed
+  // status: approved (evaluate only) | rejected | reserved | proposed (awaiting gatekeeper) | executed | failed
   insertTransaction(row) {
     const t = { id: Store.id(), created_at: Store.now(), transaction_signature: null, rejection_reason: null, ...row };
     this.db.transactions.push(t); this.save();
@@ -123,13 +123,13 @@ export class Store {
   // Bumping a policy's version never resets it; only a new policy does.
   spentLamports(policyId) {
     return this.db.transactions
-      .filter(t => t.policy_id === policyId && (t.status === 'executed' || t.status === 'reserved'))
+      .filter(t => t.policy_id === policyId && ['executed', 'reserved', 'proposed'].includes(t.status))
       .reduce((s, t) => s + t.amount_lamports, 0);
   }
   // Content-bound one-time authorizations: an executed (or in-flight)
   // authorization id cannot be used again.
   authState(policyId, authId) {
-    const t = this.db.transactions.find(x => x.policy_id === policyId && x.auth_id === authId && (x.status === 'executed' || x.status === 'reserved'));
+    const t = this.db.transactions.find(x => x.policy_id === policyId && x.auth_id === authId && ['executed', 'reserved', 'proposed'].includes(x.status));
     return t ? t.status : 'free';
   }
 

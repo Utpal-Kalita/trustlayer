@@ -170,3 +170,6 @@ legend { font-weight: 650; margin-bottom: 12px; }
   #net-pill { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* hosted (live worker) mode hides local-only controls */
+[data-backend="hosted"] .local-only { display: none !important; }
