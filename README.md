@@ -33,14 +33,14 @@ own policy. The security boundary does not depend on the AI behaving correctly.
 
 ## Demo and live links
 
-- **Demo video (1:56):** https://youtu.be/h3BCBdKqOtw (unlisted)
+- **Demo video (1:56):** https://youtu.be/h3BCBdKqOtw
 - **Live console:** https://trustlayer-dashboard-omega.vercel.app/app.html - the **Ask the agent** tab runs the real AI routes against the live backend as dry runs
 - **Landing page:** https://trustlayer-dashboard-omega.vercel.app/
 - **Live backend:** https://trustlayer-api-cf.adzeo2.workers.dev (`GET /api/health`, `/api/policies`, `/api/audit`, `/api/state`; public AI routes below)
 
 ## Features
 
-- **Plain-language tasks in, checked payments out.** An AI model (Groq `openai/gpt-oss-20b`) turns a task into a structured payment proposal and writes the explanation. It never decides anything.
+- **Plain-language tasks in, checked payments out.** An AI model (Groq `openai/gpt-oss-20b`) turns a task into a structured payment proposal and writes the explanation. It never decides whether a payment is authorized.
 - **Deterministic policy engine.** Per-payment and total SOL limits, recipient allowlist and blocklist, System-Program-transfers only, policy expiry, one-time-use authorizations. Fails closed on any error.
 - **Two-key execution (Squads 2-of-2).** An approved payment becomes a real Squads proposal: the hosted agent key votes 1-of-2; the owner-side gatekeeper reads the transaction back from chain, byte-verifies it, then votes 2-of-2 and executes. Neither key moves funds alone.
 - **Prompt-injection defense, shown live.** A controlled vendor catalogue hides a malicious "payout wallet changed" notice. The careless agent profile asks to pay the attacker wallet; the engine blocks it (verified live on devnet, 2026-11-08). The default careful profile refuses the page outright.
@@ -163,7 +163,7 @@ keep counting (0.07 SOL of 0.1 SOL used at the last check on Nov 8). Current usa
 
 ## AI agents
 
-The model reads tasks, plans and asks to pay. It never decides. Every payment request
+The model reads tasks, plans and asks to pay. It never decides whether a payment is authorized. Every payment request
 goes to the same deterministic policy engine as any other proposal, and the model cannot
 approve, sign, raise a limit or skip a check.
 
