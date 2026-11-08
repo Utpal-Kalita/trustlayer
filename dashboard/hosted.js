@@ -47,7 +47,7 @@ function checksFor(d, amountSol, destination) {
   const ledger = hit(/ledger unavailable/i);
   const list = [
     row('Permission expiry', hit(/expired/i), `Valid until ${p.expiresAt ? new Date(p.expiresAt).toISOString() : '—'}.`),
-    row('Allowed action', hit(/action/i), 'SOL transfer is permitted.'),
+    row('Allowed action', hit(/\baction\b/i), 'SOL transfer is permitted.'),
     row('Program', hit(/program/i), 'System Program only.'),
     row('Transaction limit', hit(/per-transaction|invalid amount/i), `${solN(amountSol)} is within the ${solN(p.maxSolPerTransaction)} per-transaction limit.`),
     row('Spending limit', hit(/budget/i), `Within the ${solN(p.maxSolTotal)} total, counting spend derived from chain.`),
@@ -195,7 +195,6 @@ export async function bootHosted() {
   $('#btn-signout').hidden = true;
   $('[data-tab="agents"]').textContent = 'Policy';
   $('#h-agents').textContent = 'Policy and proposals';
-  setupPropose();
-  try { await load(); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
+  try { await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
   setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 10000);
 }
