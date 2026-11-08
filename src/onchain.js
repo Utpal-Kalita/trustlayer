@@ -4,7 +4,6 @@ import { Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, LAMP
 import * as multisig from '@sqds/multisig';
 import bs58 from 'bs58';
 import fs from 'node:fs';
-import { loadPolicy, evaluate } from './policy/engine.js';
 
 const { transactions, accounts, types } = multisig;
 const { Permissions, Permission } = types;
@@ -59,7 +58,8 @@ export async function ensureMultisig(conn, keys, state) {
   const createTx = transactions.multisigCreateV2({
     blockhash: (await conn.getLatestBlockhash()).blockhash,
     treasury: programConfig.treasury, createKey: createKey.publicKey,
-    creator: keys.owner.publicKey, multisigPda, configAuthority: null, timeLock: 0, threshold: 2,
+    creator: keys.owner.publicKey, multisigPda, configAuthority: keys.owner.publicKey, // owner can revoke or replace members (PRD Module 5)
+    timeLock: 0, threshold: 2,
     members: [
       { key: keys.agent.publicKey, permissions: Permissions.fromPermissions([Permission.Initiate, Permission.Vote]) },
       { key: keys.gatekeeper.publicKey, permissions: Permissions.fromPermissions([Permission.Initiate, Permission.Vote, Permission.Execute]) },
@@ -93,71 +93,55 @@ export async function ensureFunded(conn, keys) {
   }
 }
 
-// The full TrustLayer flow for one requested payment. Returns {decision, sig?}.
-// Decode a SystemProgram transfer instruction back to its semantic content.
-// The policy is evaluated against what the transaction ACTUALLY does, never
-// against caller-supplied descriptions.
-function decodeTransferInstruction(ix) {
-  const programId = ix.programId.toBase58();
-  if (programId !== SystemProgram.programId.toBase58()) return { programId, action: 'unknown', destination: null, amountSol: null };
-  const view = Buffer.from(ix.data);
-  const tag = view.readUInt32LE(0);
-  if (tag !== 2) return { programId, action: 'system-other', destination: null, amountSol: null }; // 2 = Transfer
-  const lamports = Number(view.readBigUInt64LE(4));
-  return { programId, action: 'transfer', destination: ix.keys[1].pubkey.toBase58(), amountSol: lamports / LAMPORTS_PER_SOL };
-}
-
-export async function runProposal(conn, keys, state, audit, { destination, amountSol, nonce }) {
-  const { policy } = loadPolicy();
-
-  // Build the exact instruction first, then evaluate its DECODED content.
-  const vaultProbe = SystemProgram.transfer({ fromPubkey: Keypair.generate().publicKey, toPubkey: new PublicKey(destination), lamports: Math.round(amountSol * LAMPORTS_PER_SOL) });
-  const decoded = decodeTransferInstruction(vaultProbe);
-  const decision = evaluate(policy, { ...decoded, nonce }, audit);
-  const rid = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  if (!decision.allow) {
-    audit.record({ kind: 'propose', id: rid, nonce: decision.authId ?? nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'rejected', reasons: decision.reasons });
-    return { decision, sig: null };
-  }
-  // Reserve budget synchronously (no awaits since evaluation) before any chain work.
-  audit.record({ kind: 'propose', id: rid, nonce: decision.authId ?? nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], reserved: true });
-
-  // Any failure after the budget reservation must release it, or retries
-  // would be blocked by a permanently held reservation.
-  try {
+// Execute policy-approved SOL transfers through the Squads 2-of-2 vault.
+//
+// Called by the execution service only AFTER it has re-run inspection,
+// simulation and the policy engine and reserved the spend. Steps:
+//   1. agent creates the vault transaction + proposal and casts vote 1
+//   2. the gatekeeper reads the vault transaction back FROM CHAIN, decodes it
+//      and refuses to vote unless it is byte-for-byte the approved transfers
+//   3. gatekeeper casts vote 2 (threshold met)
+//   4. the real Squads execute instruction is simulated; only on success is it sent
+// Returns { sig, multisig, vault, transactionIndex, steps[] }.
+export async function executeSquadsTransfer(conn, keys, state, approved, { memo = 'trustlayer' } = {}) {
+  const steps = [];
+  const log = (step, sig) => { steps.push({ step, sig }); };
   await ensureFunded(conn, keys);
   state = await ensureMultisig(conn, keys, state);
   const multisigPda = new PublicKey(state.multisigPda);
   const vaultPda = new PublicKey(state.vaultPda);
-
-  // keep the vault funded enough for the transfer (demo: owner tops up to 0.2)
-  const vbal = await conn.getBalance(vaultPda);
-  if (vbal < amountSol * LAMPORTS_PER_SOL) {
-    const topup = new Transaction().add(SystemProgram.transfer({ fromPubkey: keys.owner.publicKey, toPubkey: vaultPda, lamports: 0.2 * LAMPORTS_PER_SOL }));
-    await sendV(conn, topup, [keys.owner], 'vault topup');
-  }
+  const ixs = approved.map(t => SystemProgram.transfer({ fromPubkey: vaultPda, toPubkey: new PublicKey(t.to), lamports: t.lamports }));
+  const bh = async () => (await conn.getLatestBlockhash()).blockhash;
 
   const ms = await accounts.Multisig.fromAccountAddress(conn, multisigPda);
   const txIndex = BigInt(Number(ms.transactionIndex) + 1);
-  const innerMsg = new TransactionMessage({
-    payerKey: vaultPda, recentBlockhash: (await conn.getLatestBlockhash()).blockhash,
-    instructions: [SystemProgram.transfer({ fromPubkey: vaultPda, toPubkey: new PublicKey(destination), lamports: Math.round(amountSol * LAMPORTS_PER_SOL) })],
+  const innerMsg = new TransactionMessage({ payerKey: vaultPda, recentBlockhash: await bh(), instructions: ixs });
+  log('vault transaction created by agent', await sendV(conn, transactions.vaultTransactionCreate({ blockhash: await bh(), feePayer: keys.agent.publicKey, multisigPda, transactionIndex: txIndex, creator: keys.agent.publicKey, vaultIndex: 0, ephemeralSigners: 0, transactionMessage: innerMsg, memo }), [keys.agent], 'vault tx create'));
+  log('proposal created by agent', await sendV(conn, transactions.proposalCreate({ blockhash: await bh(), feePayer: keys.agent.publicKey, multisigPda, transactionIndex: txIndex, creator: keys.agent.publicKey }), [keys.agent], 'proposal create'));
+  log('agent approval (1 of 2)', await sendV(conn, transactions.proposalApprove({ blockhash: await bh(), feePayer: keys.agent.publicKey, multisigPda, transactionIndex: txIndex, member: keys.agent.publicKey }), [keys.agent], 'agent approve (1/2)'));
+
+  // Gatekeeper verifies what is actually on chain before it votes.
+  const [txPda] = multisig.getTransactionPda({ multisigPda, index: txIndex });
+  const onchain = await accounts.VaultTransaction.fromAccountAddress(conn, txPda);
+  const keysOn = onchain.message.accountKeys.map(k => k.toBase58());
+  const decoded = onchain.message.instructions.map(ix => {
+    const prog = keysOn[ix.programIdIndex];
+    const data = Buffer.from(ix.data);
+    if (prog !== SystemProgram.programId.toBase58() || data.readUInt32LE(0) !== 2) return null;
+    return { from: keysOn[ix.accountIndexes[0]], to: keysOn[ix.accountIndexes[1]], lamports: Number(data.readBigUInt64LE(4)) };
   });
-  const bh = async () => (await conn.getLatestBlockhash()).blockhash;
-  const vtx = transactions.vaultTransactionCreate({ blockhash: await bh(), feePayer: keys.agent.publicKey, multisigPda, transactionIndex: txIndex, creator: keys.agent.publicKey, vaultIndex: 0, ephemeralSigners: 0, transactionMessage: innerMsg, memo: 'trustlayer payment' });
-  await sendV(conn, vtx, [keys.agent], 'vault tx create');
-  const ptx = transactions.proposalCreate({ blockhash: await bh(), feePayer: keys.agent.publicKey, multisigPda, transactionIndex: txIndex, creator: keys.agent.publicKey });
-  await sendV(conn, ptx, [keys.agent], 'proposal create');
-  const a1 = transactions.proposalApprove({ blockhash: await bh(), feePayer: keys.agent.publicKey, multisigPda, transactionIndex: txIndex, member: keys.agent.publicKey });
-  await sendV(conn, a1, [keys.agent], 'agent approve (1/2)');
-  const a2 = transactions.proposalApprove({ blockhash: await bh(), feePayer: keys.gatekeeper.publicKey, multisigPda, transactionIndex: txIndex, member: keys.gatekeeper.publicKey, memo: 'policy: all checks passed' });
-  await sendV(conn, a2, [keys.gatekeeper], 'gatekeeper approve (2/2)');
+  const same = decoded.length === approved.length && decoded.every((d, i) => d && d.from === vaultPda.toBase58() && d.to === approved[i].to && d.lamports === approved[i].lamports);
+  if (!same) throw new Error('gatekeeper refused: on-chain vault transaction does not match the approved transfers');
+  steps.push({ step: 'gatekeeper verified on-chain vault transaction matches the approved transfers', sig: null });
+
+  log('gatekeeper approval (2 of 2)', await sendV(conn, transactions.proposalApprove({ blockhash: await bh(), feePayer: keys.gatekeeper.publicKey, multisigPda, transactionIndex: txIndex, member: keys.gatekeeper.publicKey, memo: 'trustlayer: all policy checks passed' }), [keys.gatekeeper], 'gatekeeper approve (2/2)'));
+
+  // Simulate the real Squads execution path before sending it (PRD 12.3).
   const etx = await transactions.vaultTransactionExecute({ connection: conn, blockhash: await bh(), feePayer: keys.gatekeeper.publicKey, multisigPda, transactionIndex: txIndex, member: keys.gatekeeper.publicKey });
+  const sim = await conn.simulateTransaction(etx, { sigVerify: false, replaceRecentBlockhash: true });
+  if (sim.value.err) throw new Error('Squads execute simulation failed: ' + JSON.stringify(sim.value.err));
+  steps.push({ step: `Squads execute simulated: success (${sim.value.unitsConsumed ?? '?'} CU)`, sig: null });
   const sig = await sendV(conn, etx, [keys.gatekeeper], 'execute');
-  audit.record({ kind: 'execute', id: rid, nonce: decision.authId ?? nonce, destination: decoded.destination, amountSol: decoded.amountSol, decision: 'allowed', reasons: [], executed: true, sig });
-  return { decision, sig, multisig: state.multisigPda, txIndex: Number(txIndex) };
-  } catch (err) {
-    audit.record({ kind: 'execute', id: rid, nonce: decision.authId ?? nonce, released: true, note: String(err).slice(0, 200) });
-    throw err;
-  }
+  log('executed by Squads vault', sig);
+  return { sig, multisig: state.multisigPda, vault: state.vaultPda, transactionIndex: Number(txIndex), steps };
 }

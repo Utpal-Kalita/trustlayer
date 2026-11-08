@@ -9,3 +9,9 @@ dist/
 test-ledger/
 data/
 !data/state.json
+# design skill (restore with: npx skills add Leonxlnx/taste-skill) and its check output
+.agents/
+.claude/skills/
+.taste-skill/
+dashboard/.taste-skill/
+dashboard/shots/

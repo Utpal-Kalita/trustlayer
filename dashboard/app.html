@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" data-app="console">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrustLayer Console</title>
+<meta name="description" content="Register AI agents, set their spending permissions and watch every transaction TrustLayer approves or blocks on Solana devnet.">
+<meta name="theme-color" content="#0b0d0c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%230b0d0c'/%3E%3Cpath d='M9 10h14M16 10v13' stroke='%23e8f0ea' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="console.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- Sign-in -->
+<section id="signin" class="signin" hidden>
+  <div class="signin-card">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">T</span>TrustLayer</a>
+    <h1>Sign in to the console</h1>
+    <p class="muted">Your wallet is your account. Signing a one-time message proves you own it; nothing is sent on chain and no key leaves your wallet.</p>
+    <button class="btn primary wide" id="btn-phantom" type="button">Connect Phantom</button>
+    <button class="btn wide" id="btn-demo" type="button" hidden>Use the demo owner</button>
+    <p class="err" id="signin-err" role="alert"></p>
+    <p class="fine muted">Solana devnet only. No real funds.</p>
+  </div>
+</section>
+
+<!-- App -->
+<div id="app" class="app" hidden>
+  <header class="top">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">T</span>TrustLayer</a>
+    <nav class="tabs" aria-label="Console sections">
+      <a href="#overview" data-tab="overview">Overview</a>
+      <a href="#agents" data-tab="agents">Agents</a>
+      <a href="#propose" data-tab="propose">Propose</a>
+      <a href="#history" data-tab="history">History</a>
+      <a href="#security" data-tab="security">Security events</a>
+    </nav>
+    <div class="who">
+      <span class="pill" id="net-pill" title="Cluster and simulation mode"></span>
+      <span class="mono small" id="who-wallet"></span>
+      <button class="btn ghost small" id="btn-signout" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Overview -->
+    <section class="view" id="view-overview" aria-labelledby="h-overview">
+      <div class="head"><h1 id="h-overview">Overview</h1><p class="muted">Every proposal your agents made, and what TrustLayer decided.</p></div>
+      <div class="stats" id="stats"></div>
+      <div class="grid2">
+        <div class="panel"><div class="panel-h"><h2>Latest decisions</h2><a href="#history" class="link">All history</a></div><div id="ov-latest"></div></div>
+        <div class="panel"><div class="panel-h"><h2>Latest security events</h2><a href="#security" class="link">All events</a></div><div id="ov-events"></div></div>
+      </div>
+      <div class="panel" id="exec-panel"></div>
+    </section>
+
+    <!-- Agents -->
+    <section class="view" id="view-agents" aria-labelledby="h-agents" hidden>
+      <div class="head row"><div><h1 id="h-agents">Agents</h1><p class="muted">Each agent proposes from one Squads vault and is bound by one policy.</p></div>
+        <button class="btn primary" id="btn-new-agent" type="button">Register an agent</button></div>
+      <div id="agents-list"></div>
+    </section>
+
+    <!-- Propose -->
+    <section class="view" id="view-propose" aria-labelledby="h-propose" hidden>
+      <div class="head"><h1 id="h-propose">Propose a transaction</h1><p class="muted">Send a proposal exactly as an agent would. Agents call the same endpoints with their <code>x-agent-key</code>.</p></div>
+      <div class="grid2 propose">
+        <form class="panel" id="propose-form" novalidate>
+          <div class="field"><label for="p-agent">Agent</label><select id="p-agent" required></select></div>
+          <div class="presets" role="group" aria-label="Demo scenarios">
+            <button class="chip" type="button" data-preset="ok">Vendor payment · 0.01 SOL</button>
+            <button class="chip" type="button" data-preset="big">Large payment · 0.5 SOL</button>
+            <button class="chip" type="button" data-preset="unknown">Unknown wallet · 0.01 SOL</button>
+          </div>
+          <div class="field"><label for="p-recipient">Recipient address</label><input id="p-recipient" class="mono" list="p-recipients" autocomplete="off" required spellcheck="false"><datalist id="p-recipients"></datalist></div>
+          <div class="field two">
+            <div><label for="p-amount">Amount (SOL)</label><input id="p-amount" type="number" min="0" step="0.001" value="0.01" required></div>
+            <div><label for="p-action">Action</label><select id="p-action"><option value="sol_transfer">SOL transfer</option><option value="spl_transfer">SPL token transfer</option></select></div>
+          </div>
+          <div class="field"><label for="p-nonce">Task nonce <span class="muted">(optional, one-time use)</span></label><input id="p-nonce" class="mono" autocomplete="off"></div>
+          <div class="actions">
+            <button class="btn" type="submit" data-mode="evaluate">Evaluate only</button>
+            <button class="btn primary" type="submit" data-mode="execute" id="btn-exec">Execute through Squads</button>
+          </div>
+          <p class="fine muted" id="exec-note"></p>
+        </form>
+        <div class="panel" id="decision" aria-live="polite"><p class="muted empty">The decision and every check appear here.</p></div>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section class="view" id="view-history" aria-labelledby="h-history" hidden>
+      <div class="head row"><div><h1 id="h-history">Transaction history</h1><p class="muted">Every authorization attempt is recorded, approved or not.</p></div>
+        <div class="filters" role="group" aria-label="Filter by result">
+          <button class="chip on" data-filter="all" type="button">All</button><button class="chip" data-filter="ok" type="button">Approved</button><button class="chip" data-filter="bad" type="button">Blocked</button>
+        </div></div>
+      <div class="panel flush"><div class="table-wrap"><table class="tbl" id="tx-table">
+        <thead><tr><th>Time</th><th>Agent</th><th>Recipient</th><th class="num">Amount</th><th>Result</th><th>Reason</th><th>Signature</th></tr></thead><tbody></tbody></table></div></div>
+    </section>
+
+    <!-- Security -->
+    <section class="view" id="view-security" aria-labelledby="h-security" hidden>
+      <div class="head"><h1 id="h-security">Security events</h1><p class="muted">Limit breaches, unknown recipients, expired permissions, failed simulations and owner actions.</p></div>
+      <div class="ev-summary" id="ev-summary"></div>
+      <div class="panel flush" id="ev-list"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Dialogs -->
+<dialog id="dlg-agent" class="dlg" aria-labelledby="dlg-agent-h">
+  <form method="dialog" id="agent-form" novalidate>
+    <h2 id="dlg-agent-h">Register an agent</h2>
+    <div class="field"><label for="a-name">Agent name</label><input id="a-name" required maxlength="60" value="Research Agent"></div>
+    <div class="field"><label for="a-wallet">Squads vault address</label><input id="a-wallet" class="mono" required spellcheck="false"><p class="fine muted" id="a-wallet-note"></p></div>
+    <fieldset class="policy-fields" id="a-policy"></fieldset>
+    <p class="err" role="alert"></p>
+    <div class="actions"><button class="btn ghost" value="cancel" formnovalidate type="submit">Cancel</button><button class="btn primary" id="a-submit" value="ok" type="submit">Register agent</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-policy" class="dlg" aria-labelledby="dlg-policy-h">
+  <form method="dialog" id="policy-form" novalidate>
+    <h2 id="dlg-policy-h">Edit permissions</h2>
+    <p class="muted fine" id="policy-meta"></p>
+    <fieldset class="policy-fields" id="e-policy"></fieldset>
+    <p class="err" role="alert"></p>
+    <div class="actions"><button class="btn ghost" value="cancel" formnovalidate type="submit">Cancel</button><button class="btn primary" value="ok" type="submit">Save policy</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-key" class="dlg" aria-labelledby="dlg-key-h">
+  <form method="dialog">
+    <h2 id="dlg-key-h">Agent key</h2>
+    <p>Give this key to the agent. It is shown once; TrustLayer stores only its hash.</p>
+    <div class="keybox"><code id="key-value" class="mono"></code><button class="btn small" type="button" id="btn-copy">Copy</button></div>
+    <pre class="code" id="key-curl"></pre>
+    <div class="actions"><button class="btn primary" value="ok" type="submit">Done</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-tx" class="dlg wide" aria-labelledby="dlg-tx-h">
+  <form method="dialog"><h2 id="dlg-tx-h">Transaction</h2><div id="tx-detail"></div><div class="actions"><button class="btn primary" value="ok" type="submit">Close</button></div></form>
+</dialog>
+
+<script type="module" src="console.js"></script>
+</body>
+</html>
