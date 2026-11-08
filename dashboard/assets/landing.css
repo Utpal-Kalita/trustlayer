@@ -86,3 +86,12 @@
 @media (max-width: 639px) { .ui-panel.key { padding: 24px; } .keys { margin-top: var(--s-6); } }
 .closing .close__word { font-size: clamp(48px, 12.4vw, 176px); }
 @media (min-width: 640px) and (max-width: 1023px) { #api, #limits { --h: 2; } }
+.closing .close__word { font-size: clamp(44px, 11.5vw, 164px); line-height: 1.05; }
+.ic-facts { display: flex; gap: 12px; }
+.ic-facts img { width: 40px; height: 40px; padding: 8px; background: var(--p-surface); border-radius: var(--r-sm); }
+@media (max-width: 639px) {
+  .ly-collage .pc--mono { display: none; }
+  #api .ui-code__pre { white-space: pre-wrap; font-size: 11px; }
+  #api .at-corner { --ax: 16px; right: 16px; }
+}
+@media (max-width: 359px) { header.nav .nav__bar > .nav__actions { display: none !important; } header.nav .nav__logo { min-width: 0; } }

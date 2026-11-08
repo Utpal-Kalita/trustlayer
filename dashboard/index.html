@@ -8,7 +8,7 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="TrustLayer: wallet permissions for AI agents on Solana">
 <meta property="og:description" content="An agent proposes, TrustLayer checks the policy, and only then votes in a Squads 2-of-2.">
-<meta property="og:image" content="share.jpg">
+<meta property="og:image" content="share.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#ffffff">
@@ -232,7 +232,7 @@
           <a class="link" href="https://explorer.solana.com/tx/3NxbjhoT1QDPGTfFDeTQBo2gMsNenkMa8LS6qWYLeLF5RToGV7fSWquvWGvse6MewnRmDMS7wMARzc7y3JVNXQmE?cluster=devnet">See the approved payment on devnet</a>
         </div>
         <div class="frame frame--split span-6 start-7" data-visual data-fx="gradient-mesh" data-fx-seed="7">
-          <div class="dg" data-diagram data-dg-still><script type="application/json">{"layout":"lanes","alt":"An agent proposal goes to TrustLayer, which decodes it, simulates it on Solana devnet and checks the policy before the Squads vote.","input":{"label":"Agent proposal","icon":"ui:bot","sub":"x-agent-key"},"core":{"label":"TrustLayer"},"lanes":[{"label":"Decoded","icon":"ui:binary","done":true,"sub":"Every instruction"},{"label":"Simulated","icon":"si:solana","done":true,"sub":"Solana devnet"},{"label":"Policy passed","icon":"ui:shield-check","done":true,"sub":"Then the 2nd vote"}]}</script></div>
+          <div class="dg" data-diagram data-dg-still><script type="application/json">{"layout":"lanes","size":"card","alt":"An agent proposal goes to TrustLayer, which decodes it, simulates it on Solana devnet and checks the policy before the Squads vote.","input":{"label":"Agent","icon":"ui:bot"},"core":{"label":"TrustLayer"},"lanes":[{"label":"Decoded","icon":"ui:binary","done":true},{"label":"Simulated","icon":"si:solana","done":true},{"label":"Policy","icon":"ui:shield-check","done":true}]}</script></div>
         </div>
       </div>
     </div>
@@ -284,6 +284,7 @@
         <div class="span-5 stack-4">
           <h2 id="limits-h">Questions and limits</h2>
           <p>Built for the MLH Solana Hackathon, 6 to 8 November 2026.</p>
+          <div class="ic-facts"><img data-icon="si:solana" src="assets/icons/solana.svg" alt="Solana" width="40" height="40"><img data-icon="github" src="assets/icons/github.svg" alt="GitHub" width="40" height="40"></div>
           <a class="link" href="https://github.com/utpal-kalita/trustlayer#api">Read the API</a>
         </div>
         <div class="faq span-6 start-7">

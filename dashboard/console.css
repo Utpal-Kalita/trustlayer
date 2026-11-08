@@ -1,14 +1,14 @@
 /* TrustLayer console. Tokens mirror the landing page's dealt system (see DESIGN.md). */
 :root {
-  --bg: #f4f5f2; --surface: #ffffff; --surface-2: #eceee9; --ink: #121513; --muted: #5d645f; --line: #d9ddd6;
-  --accent: #0f6e4c; --accent-ink: #ffffff; --ok: #0f7a4f; --ok-bg: #e2f2e9; --bad: #b4232f; --bad-bg: #fbe7e8; --warn: #8a5a00; --warn-bg: #fbf0d9;
-  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --bg: #f4f4f4; --surface: #ffffff; --surface-2: #ececec; --ink: #111111; --muted: #6b6b6b; --line: #dcdcdc;
+  --accent: #1a4be0; --accent-ink: #ffffff; --ok: #127a3a; --ok-bg: #e2f2e9; --bad: #c4231b; --bad-bg: #fbe7e8; --warn: #8a5a00; --warn-bg: #fbf0d9;
+  --font: "Host Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --r: 4px; --r-lg: 6px; --gutter: 16px; --shadow: 0 1px 0 rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b0d0c; --surface: #131614; --surface-2: #1a1e1b; --ink: #e8ece8; --muted: #9aa39c; --line: #262b27;
-    --accent: #3ccf8e; --accent-ink: #062014; --ok: #4ad99a; --ok-bg: #0f2a1d; --bad: #ff6b74; --bad-bg: #2f1214; --warn: #f0b84a; --warn-bg: #2b2210; --shadow: none;
+    --bg: #111111; --surface: #1a1a1a; --surface-2: #222222; --ink: #ffffff; --muted: #9a9a9a; --line: #2c2c2c;
+    --accent: #6f93ff; --accent-ink: #0b1230; --ok: #4ad99a; --ok-bg: #0f2a1d; --bad: #ff6b74; --bad-bg: #2f1214; --warn: #f0b84a; --warn-bg: #2b2210; --shadow: none;
   }
 }
 * { box-sizing: border-box; }
