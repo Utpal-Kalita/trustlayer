@@ -25,7 +25,12 @@
   .wrap{max-width:1120px;margin:0 auto;padding:0 32px}
 
   header{border-bottom:1px solid var(--line);padding:20px 0}
-  header .wrap{display:flex;align-items:center;justify-content:space-between}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 14px}
+  @media(max-width:860px){
+    header .wrap{gap:10px 12px}
+    .chip{white-space:normal;line-height:1.35}
+    header .chip:first-of-type{order:3;flex-basis:100%;text-align:center}
+  }
   .brand{display:flex;align-items:center;gap:12px;font-weight:650;font-size:18px;letter-spacing:-.01em}
   .mark{width:30px;height:30px;border-radius:9px;background:var(--green);display:grid;place-items:center;font-size:15px;color:#06130c;font-weight:800}
   .chip{font:12px/1.2 var(--mono);color:var(--green);border:1px solid #14f19544;background:#14f19511;padding:7px 12px;border-radius:999px}
@@ -47,7 +52,13 @@
   h2{font-size:26px;letter-spacing:-.02em;margin-bottom:6px}
   .sub{color:var(--dim);margin-bottom:28px;font-size:15px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-  @media(max-width:860px){.grid2{grid-template-columns:1fr}.hero h1{font-size:34px}}
+  @media(max-width:860px){
+    .grid2{grid-template-columns:1fr}
+    .hero h1{font-size:34px}
+    .flow{scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;margin-left:-32px;margin-right:-32px;padding-left:32px;padding-right:32px;
+      mask-image:linear-gradient(90deg,#000 82%,transparent);-webkit-mask-image:linear-gradient(90deg,#000 82%,transparent)}
+    .step{min-width:62%;scroll-snap-align:start}
+  }
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
   .card h2{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:12px}
