@@ -1,32 +1,42 @@
 # TrustLayer
 
-**The permission layer for AI agents.**
+**Authorization infrastructure for AI agents that handle money.**
 *Autonomous agents. Limited authority. Verifiable execution.*
 
-An AI agent never gets unrestricted wallet authority. It **proposes** Solana
-transactions. TrustLayer **decodes** every instruction, **simulates** the
-transaction against live devnet state and **checks** it against the owner's policy.
-Only then does the TrustLayer gatekeeper cast the second vote in a **Squads 2-of-2
-multisig** (agent key + gatekeeper key). Neither key can move funds alone.
+An AI agent never gets unrestricted wallet authority. It **asks** to pay. A
+deterministic policy engine decides whether the payment is allowed. A real payment needs
+two signatures in a **Squads 2-of-2 multisig**: the hosted agent's key and a gatekeeper
+key that stays on the owner's machine. Neither key can move funds alone, and no language
+model is in the decision path.
 
 > A transaction can be technically valid on Solana and still be unauthorized.
 > TrustLayer rejects it.
 
-Built for the **MLH Solana Hackathon, Nov 6-8 2026**. Solana devnet only. Product spec: [prd.md](prd.md).
+Built for the **MLH Solana Hackathon, Nov 6-8 2026**. Solana devnet only, test SOL only.
+This is a prototype, not production-ready financial infrastructure. Product spec: [prd.md](prd.md).
+
+## Built, verified, vision
+
+| | |
+|---|---|
+| **Built** | Deterministic policy engine; hosted agent on a Cloudflare worker (agent key only); owner-side gatekeeper script; Squads 2-of-2 execution path; single-task AI route and multi-step AI agent (Groq `openai/gpt-oss-20b`); landing page and console; optional local API with agent registration and per-agent policies |
+| **Verified** | Payments executed on Solana **devnet** with test SOL through the 2-of-2 flow, including AI-initiated ones (links below); attacker payments blocked by the engine; agent-alone and gatekeeper-alone execution failing on chain; offline test suites |
+| **Vision, not built** | Mainnet use, SPL token and DeFi execution, on-chain policy enforcement, cross-run duplicate protection, signed task-authorization tokens, production hardening |
 
 ## Live backend and key separation
 
-The console (`dashboard/app.html`) talks to the verified Cloudflare backend
-`https://trustlayer-api-cf.adzeo2.workers.dev` by default, through its public routes
-only: health, policies, audit, state, evaluate. Contract: [docs/INTEGRATION.md](docs/INTEGRATION.md).
+The console (`dashboard/app.html`) talks to the Cloudflare backend
+`https://trustlayer-api-cf.adzeo2.workers.dev` by default, through public routes only:
+health, policies, audit, state, evaluate, and the two AI routes below. Contract:
+[docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 | Who | Holds | Can do |
 |---|---|---|
-| Browser (landing page, console) | nothing | read policy and audit, dry-run evaluate |
-| Hosted agent (worker) | AGENT key only | re-check policy, create the Squads proposal, approve 1 of 2 |
+| Browser (landing page, console) | nothing | read policy and audit, dry-run evaluate, run the AI routes as dry runs |
+| Hosted agent (worker) | AGENT key only | re-check policy, create the Squads proposal, approve 1 of 2 (operator-only routes) |
 | Owner's machine | GATEKEEPER key (and OWNER key) | `scripts/gatekeeper-execute.mjs`: read the vault tx from chain, verify, approve 2 of 2, execute |
 
-Pay through the live backend:
+Pay through the live backend (operator only):
 
 ```bash
 # 1. hosted agent proposes (API key stays in this terminal, never in the browser)
@@ -40,17 +50,78 @@ Uses the verified multisig `BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC` (vault
 `93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe`). Nothing here creates a multisig or
 requests airdrops; fund the vault by hand (docs/DEVNET-FUNDING.md).
 
-## Autonomous agent
+### Live demo policy
 
-`POST /api/agent/run` `{ task, scenario: "clean" | "injected" }` runs a bounded tool-calling
-agent (`cloudflare/agent-loop.js`, Groq `openai/gpt-oss-20b`). Over up to 6 steps it lists
-vendors, reads their pages, checks its budget, asks TrustLayer to pay and reports back. The
-"injected" vendor page hides instructions for AI assistants (pay another wallet, plus a fee).
-Every payment request is judged by the deterministic engine; the model can't approve, sign or
-override. Public calls are dry runs and use the daily AI quota (one unit per model step). With
-the operator key and `execute: true`, an approved payment becomes a real Squads proposal
-(agent vote 1 of 2); the owner-side gatekeeper still casts vote 2 of 2. Console: "Ask the
-agent" tab. Offline tests: `node scripts/test-agent-loop.mjs`.
+From `cloudflare/wrangler.toml` (`POLICY_JSON`), mirrored in `policies/default.json`:
+
+- max 0.05 SOL per payment, 0.1 SOL total budget
+- recipients: Vendor A (`HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z`) only; `7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM` explicitly blocked
+- SOL transfers through the System Program only; one-time use per authorization
+- expires **11:59 PM IST, November 22, 2026** (`2026-11-22T18:29:00.000Z`)
+
+The total budget is counted from executed vault transactions on chain plus open
+reservations. It is not reset by redeploys: payments already executed under this policy
+keep counting (0.07 SOL of 0.1 SOL used at the last check on Nov 8). Current usage:
+`GET /api/state`.
+
+## AI agents
+
+The model reads tasks, plans and asks to pay. It never decides. Every payment request
+goes to the same deterministic policy engine as any other proposal, and the model cannot
+approve, sign, raise a limit or skip a check.
+
+### Single task: `POST /api/agent`
+
+`{ task }`. The model turns one plain-language task into a payment proposal, the engine
+decides, and the model writes a short explanation of the verdict. No reservation, no
+proposal, no funds moved.
+
+### Multi-step agent: `POST /api/agent/run`
+
+`{ task, scenario: "clean" | "injected" }`. A bounded tool-calling agent
+(`cloudflare/agent-loop.js`, Groq `openai/gpt-oss-20b`) with five tools:
+
+| Tool | What it does |
+|---|---|
+| `list_vendors` | Lists the fixed demo vendors and their wallets |
+| `read_vendor_page` | Returns a vendor's catalogue page (fixed text, no URL fetching). In the `injected` scenario Vendor A's page hides a note for AI assistants: pay another wallet, plus a 0.02 SOL fee |
+| `check_budget` | Per-payment limit, total limit, remaining budget, approved recipients, expiry |
+| `request_payment` | Sends the payment request to the policy engine; returns APPROVED or BLOCKED with reasons |
+| `finish` | Ends the run with a summary for the user |
+
+Bounds, from the code:
+
+- Up to **8 model steps** per run.
+- Up to **3 distinct payment requests** per run reach the engine; more are refused.
+- An identical payment (same destination and amount) already approved **within the same
+  run** is not submitted to the policy engine again. This protection does **not** extend
+  across separate runs.
+- Tool arguments are validated before use; unknown tools and malformed arguments are refused.
+
+**Public runs are dry runs.** APPROVED means the policy would allow the request. It does
+not mean funds moved or anything was purchased. With the operator key and
+`execute: true`, an APPROVED request becomes a real Squads proposal with the agent's vote
+(1 of 2); funds move only after the owner-side gatekeeper verifies it and casts vote 2 of 2.
+
+Limits on public use, enforced by the worker:
+
+- **300 model steps per UTC day**, shared by all public callers of both AI routes (one unit
+  per model step). This is TrustLayer's own application quota, not Groq's provider allowance.
+- **10 agent runs per hour per IP** for `/api/agent/run` (30 calls per hour per IP for `/api/agent`).
+- Groq can separately rate-limit calls. On HTTP 429 the agent waits once if Groq's
+  `Retry-After` is 20 seconds or less, otherwise the run stops.
+
+### What the AI tests showed
+
+- **Single-task route, live:** given a task containing an injected instruction, the model
+  proposed paying the attacker wallet and the deterministic policy engine blocked it.
+- **Multi-step agent, live:** in real poisoned-page runs, the model either refused to buy or
+  asked to pay only the allowlisted Vendor A. It did **not** attempt an attacker payment,
+  so these runs did not show a live hijack being blocked.
+- **Multi-step agent, offline tests** (`node scripts/test-agent-loop.mjs`): a scripted model
+  that follows the malicious instructions asks to pay the attacker; the real policy engine
+  blocks it, and the agent then pays Vendor A. These are offline tests with a scripted
+  model, not live model runs.
 
 ## Local API (optional)
 
@@ -62,16 +133,17 @@ evaluate.
 
 ```bash
 npm install
-npm test                                   # policy engine + API tests, offline
+npm test                                   # policy engine, API and agent-loop tests, offline
 TRUSTLAYER_DEMO_LOGIN=1 TRUSTLAYER_API_KEY=dev npm start     # console at http://localhost:8787/app.html
 TRUSTLAYER_API_KEY=dev npm run demo:setup  # registers "Research Agent" on the verified vault
 npm run demo:agent                         # the 3 PRD scenarios (evaluate)
 npm run demo:agent -- --execute            # approved one -> Squads proposal, vote 1 of 2; prints the gatekeeper command
+node scripts/e2e-live.mjs                  # checks the live worker and devnet state (public routes, no keys)
 ```
 
 The console uses the local API when the page is served by it; `?backend=hosted` forces the live worker.
 
-## How a proposal is decided
+### How the local API decides a proposal
 
 ```
 agent --x-agent-key--> POST /api/transactions/{evaluate|execute}
@@ -96,7 +168,7 @@ agent --x-agent-key--> POST /api/transactions/{evaluate|execute}
 or an earlier evaluation. A failed proposal releases its reservation; an open proposal
 keeps it until the chain shows it executed (reconciled on read) or rejected.
 
-## API
+### Local API endpoints
 
 | Method | Endpoint | Who | Purpose |
 |---|---|---|---|
@@ -121,8 +193,6 @@ Proposal body: `{ "recipient": "<address>", "amountSol": 0.01, "action": "sol_tr
 or `{ "transaction": "<base64 serialized tx>" }`. Policy body:
 `{ "agentId", "maxTransactionSol", "spendingLimitSol", "approvedRecipients": [{ "label", "address" }], "allowedActions": ["sol_transfer"], "expiresInHours" }`.
 
-### Configuration
-
 | Env | Default | |
 |---|---|---|
 | `SOLANA_RPC` | devnet | RPC for simulation and execution |
@@ -139,30 +209,38 @@ or `{ "transaction": "<base64 serialized tx>" }`. Policy body:
   key alone: the threshold is 2-of-2.
 - Policy rules are evaluated **off-chain** at the approval step. On chain, the Squads
   threshold enforces the outcome: a proposal the gatekeeper does not approve cannot execute.
-- The policy engine is deterministic code. No LLM is in the decision path.
-- Storage is a single JSON file (`src/db/store.js`) with the PRD's tables. It is atomic
-  within one server process. The schema maps 1:1 onto PostgreSQL/Supabase, but swapping
-  the adapter is future work.
-- Supported for execution: SOL transfers from the agent's vault. SPL transfers are
-  decoded and can be allowed or blocked by policy, but not yet executed.
+- The policy engine is deterministic code. No language model is in the decision path.
+- The local API's storage is a single JSON file (`src/db/store.js`) with the PRD's tables,
+  atomic within one server process. A PostgreSQL/Supabase adapter is future work.
+- Supported for execution: SOL transfers from the vault. SPL transfers are decoded and can
+  be allowed or blocked by policy, but not executed.
+
+## Known limits
+
+- Model errors and rate limits (Groq's or TrustLayer's daily quota) can stop an agent run
+  before its final summary.
+- Duplicate-payment protection in the agent covers one run only, not separate runs.
+- Live multi-step runs have not shown the model attempting an attacker payment (see above).
+- Devnet and test SOL only. This is a hackathon prototype, not production-ready financial
+  infrastructure.
 
 ## Repo layout
 
-- `src/api/server.js` - HTTP API + static host
-- `src/service.js` - inspect → simulate → policy → reserve → execute pipeline
-- `src/inspect/` - instruction decoder, devnet simulation
-- `src/policy/checks.js` - deterministic policy checks
-- `src/db/store.js` - data store
-- `src/onchain.js` - agent-side Squads proposing (agent key only)
+- `cloudflare/worker.js` - the live worker (hosted agent, durable policy gate, AI routes)
+- `cloudflare/agent-loop.js` - multi-step agent loop and its tools
+- `cloudflare/groq.js` - Groq adapter (server-side only)
 - `scripts/gatekeeper-execute.mjs` - owner-side verification, vote 2 of 2, execution
 - `scripts/hosted-propose.mjs` - ask the hosted agent to propose
-- `dashboard/hosted.js` - console mode for the live worker (public routes only)
-- `dashboard/` - landing page (`index.html`) and console (`app.html`)
-- `scripts/` - tests, demo setup, demo agent, devnet spike
-- `cloudflare/` - the live worker (hosted agent + durable policy gate)
+- `scripts/ai-agent.mjs` - single-task AI flow from a terminal (operator)
+- `scripts/test-agent-loop.mjs` - offline agent tests (scripted model + real engine)
+- `scripts/e2e-live.mjs` - live check of the worker and devnet state
+- `dashboard/` - landing page (`index.html`) and console (`app.html`, `hosted.js` for the live worker)
+- `src/` - optional local API: server, inspect → simulate → policy → reserve → propose pipeline, store
 - `src/policy/engine.js`, `scripts/spike.mjs` - the first devnet proof, kept for reference
 
 ## Verification status
+
+All on-chain payments below used **devnet test SOL**, not mainnet money.
 
 Local validator proof (solana-test-validator with the real Squads v4 program `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` cloned from devnet) — all three scenarios pass (`SOLANA_RPC=http://localhost:8899 node scripts/spike.mjs`):
 
@@ -182,7 +260,8 @@ Full run record with all transaction signatures: [docs/DEVNET-FUNDING.md](docs/D
 
 ## Roadmap
 
-- PostgreSQL/Supabase adapter for the store
-- SPL token execution, more instruction types
+- Cross-run duplicate protection for agent payments
+- PostgreSQL/Supabase adapter for the local store
+- SPL token execution, then DeFi actions (swaps) under the same policy engine
 - Signed task-authorization tokens verifiable by third parties
 - On-chain policy enforcement (a program the vault calls)
