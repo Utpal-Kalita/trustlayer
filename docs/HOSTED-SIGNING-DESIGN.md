@@ -91,3 +91,49 @@ trustlayer:<policyId>:v<policyVersion>:<authId>
 - **Cloudflare Workers**: see the deployment notes — Workers + Durable Objects
   give single-writer serializable state per policy, which matches the
   check+reserve atomicity requirement natively.
+
+## Addendum 2026-11-08: hosted execution reality + correction
+
+An interim scope deviation occurred and was corrected:
+
+1. A direct agent-key signing path (`/execute` signing a plain SystemProgram
+   transfer with the hosted AGENT key) was deployed and executed exactly ONE
+   devnet transaction (0.02 SOL agent-wallet -> Vendor A, sig
+   `eH8mTDoqG1vxqdsE5QYSbRC6u4RzzBhAuCkhc8verWN3FNber1C66f6nsQ2iGGzCYi77yvQ4u6LTpw9ayHddaqj`).
+   That path did NOT implement the documented Squads 2-of-2 separation and was
+   disabled (AGENT signing secret removed) as soon as the deviation was called out.
+2. The hosted flow was then rebuilt to the intended design: the worker (agent
+   key only) creates the Squads vault transaction + proposal and approves
+   1-of-2. Funds move only after the independent gatekeeper approves 2-of-2 and
+   executes. Gatekeeper secret is never hosted.
+3. Verified live on devnet (multisig BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC,
+   vault 93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe): proposal txIndex 6
+   (create/propose/approve sigs in worker audit), gatekeeper execution sig
+   `ctMQCJiJ8fjb3Ewg9aDNgCf7FRg9FyhkYEUPdzQCfCUbCkKauwDfnttreuFB5uAEGCae1w1T6VTwdbmddatm7sd`,
+   vault balance 0.19 -> 0.17 SOL. Replay of the same authId -> 409; over-limit
+   0.09 SOL -> 403.
+4. Residue: vault tx indices 4 and 5 were created by the two failed hosted
+   attempts before the confirmation-ordering fix; they have no proposals and
+   lock ~0.003 SOL rent. Harmless; recorded here.
+5. Known limitation: replay protection combines the DO inflight reservation
+   (30 min TTL) with chain-derived executed authIds. A proposal left pending
+   past the TTL could re-reserve budget; acceptable for the demo window.
+
+## Addendum 2 (2026-11-08): durable authorization lifecycle + endpoint auth
+
+1. Durable authId lifecycle (replaces the 30-min TTL release): a squads
+   proposal reservation persists until authoritative chain state resolves it -
+   executed (memo-derived) -> counted + cleared; unknown/unreachable -> stays
+   reserved (fail closed). No TTL-only release for squads entries. Verified
+   live: sq-e2e-1/sq-e2e-2 both resolved via chain memos after gatekeeper
+   execution (executedLamports 0.04 SOL, inflight empty, replay -> 409 from
+   chain truth alone, including after worker redeploys since DO state persists).
+2. Endpoint authentication: /api/execute and /api/propose now require
+   x-trustlayer-key == API_KEY worker secret (401 otherwise). Without this the
+   hosted agent key could be used by anyone to create policy-compliant
+   proposals (budget griefing). Read-only routes stay public.
+3. Duplicate pending-proposal spend: impossible - same authId is rejected
+   while pending (409) and after execution (chain-derived 409); a new authId
+   gets the next DO-tracked squads transactionIndex.
+4. Ops route: GET /api/refresh forces authoritative re-derivation;
+   GET /api/state exposes executedLamports/usedAuthIds/inflight for audit.
