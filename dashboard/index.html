@@ -7,32 +7,40 @@
 <style>
   :root{
     --bg:#0a0b10; --panel:#12141c; --panel2:#171a25; --line:#232838;
-    --text:#e8eaf2; --dim:#9aa3b8; --faint:#5c6478;
+    --text:#e8eaf2; --dim:#9aa3b8; --faint:#7c8699;
     --green:#14f195; --violet:#9945ff; --red:#ff5c5c; --amber:#ffb84d;
     --mono:"SF Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
   }
   *{margin:0;padding:0;box-sizing:border-box}
+  ::selection{background:#9945ff55;color:#fff}
+  :focus-visible{outline:2px solid var(--violet);outline-offset:2px;border-radius:4px}
+  html{scrollbar-color:#2a3145 var(--bg)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#2a3145;border-radius:6px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  a{text-underline-offset:3px}
+  input,select{caret-color:var(--green)}
   html{scroll-behavior:smooth}
-  body{background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  body{background:var(--bg);color:var(--text);font:16px/1.6 -apple-system,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
   .wrap{max-width:1120px;margin:0 auto;padding:0 32px}
 
   header{border-bottom:1px solid var(--line);padding:20px 0}
   header .wrap{display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:12px;font-weight:650;font-size:18px;letter-spacing:-.01em}
-  .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--violet),var(--green));display:grid;place-items:center;font-size:15px;color:#0a0b10;font-weight:800}
-  .chip{font:12px/1 var(--mono);color:var(--green);border:1px solid #14f19544;background:#14f19511;padding:7px 12px;border-radius:999px}
+  .mark{width:30px;height:30px;border-radius:9px;background:var(--green);display:grid;place-items:center;font-size:15px;color:#06130c;font-weight:800}
+  .chip{font:12px/1.2 var(--mono);color:var(--green);border:1px solid #14f19544;background:#14f19511;padding:7px 12px;border-radius:999px}
 
   .hero{padding:72px 0 56px;max-width:760px}
   .hero h1{font-size:44px;line-height:1.12;letter-spacing:-.025em;font-weight:700}
-  .hero h1 .grad{background:linear-gradient(90deg,var(--green),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero h1 .grad{color:var(--green);font-weight:800}
   .hero p{color:var(--dim);margin-top:18px;font-size:18px;max-width:620px}
 
   .flow{display:flex;align-items:stretch;gap:0;margin:40px 0 8px;overflow-x:auto;padding-bottom:8px}
   .step{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);padding:16px 14px;border-radius:12px;text-align:center;transition:transform .18s ease,border-color .18s ease}
   .step:hover{transform:translateY(-2px);border-color:#3a4358}
   .step b{display:block;font-size:14px;margin-top:6px}
-  .step span{font:11px var(--mono);color:var(--faint)}
-  .step .ic{font-size:19px}
+  .step span{font:11.5px var(--mono);color:var(--faint)}
+  .step .ic{color:var(--green);display:grid;place-items:center;height:24px;margin-bottom:2px}
   .arrow{align-self:center;color:var(--faint);padding:0 8px;font-size:18px;flex:none}
 
   section{padding:56px 0}
@@ -42,7 +50,7 @@
   @media(max-width:860px){.grid2{grid-template-columns:1fr}.hero h1{font-size:34px}}
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
-  .card h3{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:12px}
+  .card h2{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:12px}
   .kv{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
   .kv:last-child{border-bottom:none}
   .kv .k{color:var(--dim);font-size:14px}
@@ -93,24 +101,24 @@
   </div>
 
   <div class="flow">
-    <div class="step"><span>STEP 1</span><div class="ic">&#129302;</div><b>AI Agent</b><span>proposes tx</span></div>
+    <div class="step"><span>STEP 1</span><div class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1"/><circle cx="9.5" cy="13" r=".4" fill="currentColor"/><circle cx="14.5" cy="13" r=".4" fill="currentColor"/><path d="M9.5 16.5h5"/></svg></div><b>AI Agent</b><span>proposes tx</span></div>
     <div class="arrow">&#8594;</div>
-    <div class="step"><span>STEP 2</span><div class="ic">&#128203;</div><b>Policy Engine</b><span>off-chain check</span></div>
+    <div class="step"><span>STEP 2</span><div class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M9 10h6M9 13.5h6M9 17h4"/></svg></div><b>Policy Engine</b><span>off-chain check</span></div>
     <div class="arrow">&#8594;</div>
-    <div class="step"><span>STEP 3</span><div class="ic">&#128737;&#65039;</div><b>Gatekeeper</b><span>signs if allowed</span></div>
+    <div class="step"><span>STEP 3</span><div class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4.5"/></svg></div><b>Gatekeeper</b><span>signs if allowed</span></div>
     <div class="arrow">&#8594;</div>
-    <div class="step"><span>STEP 4</span><div class="ic">&#128279;</div><b>Squads 2-of-2</b><span>multisig vault</span></div>
+    <div class="step"><span>STEP 4</span><div class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 6 .4l2.5-2.5a4 4 0 0 0-5.6-5.6l-1.4 1.4"/><path d="M14 10a4 4 0 0 0-6-.4L5.5 12a4 4 0 0 0 5.6 5.6l1.4-1.4"/></svg></div><b>Squads 2-of-2</b><span>multisig vault</span></div>
     <div class="arrow">&#8594;</div>
-    <div class="step"><span>STEP 5</span><div class="ic">&#9729;&#65039;</div><b>Solana</b><span>on-chain exec</span></div>
+    <div class="step"><span>STEP 5</span><div class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.9A5.5 5.5 0 0 0 7 8.5 4.5 4.5 0 0 0 7 18z"/></svg></div><b>Solana</b><span>on-chain exec</span></div>
   </div>
 
   <section class="grid2">
     <div class="card">
-      <h3>Live policy</h3>
+      <h2>Live policy</h2>
       <div id="policy"><span style="color:var(--faint)">loading...</span></div>
     </div>
     <div class="card">
-      <h3>Simulate a transaction</h3>
+      <h2>Simulate a transaction</h2>
       <label>Destination</label>
       <select id="dest">
         <option value="HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z">Vendor A (allowlisted)</option>
