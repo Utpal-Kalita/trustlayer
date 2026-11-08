@@ -61,10 +61,14 @@ ok('clean page has no injection', !/AI assistants/.test(demoWorld(policy, 'clean
   const loop = Array.from({ length: 20 }, () => ({ content: '', tool_calls: [call('list_vendors', {})] }));
   const r = await runAgent({ task: 't', policy, chat: scripted(loop).chat, budget, decide });
   ok(`step limit stops the loop at ${MAX_STEPS}`, r.stopReason === 'step-limit' && r.steps === MAX_STEPS);
-  const spam = Array.from({ length: 6 }, () => ({ content: '', tool_calls: [call('request_payment', { destination: VENDOR_A, amount_sol: 0.001, reason: 'x' })] }));
+  const spam = Array.from({ length: 6 }, (_, i) => ({ content: '', tool_calls: [call('request_payment', { destination: VENDOR_A, amount_sol: 0.001 * (i + 1), reason: 'x' })] }));
   let decided = 0;
   const r2 = await runAgent({ task: 't', policy, chat: scripted(spam).chat, budget, decide: async (tx) => { decided++; return decide(tx); } });
-  ok(`at most ${MAX_PAYMENT_ATTEMPTS} payment attempts reach the engine`, decided === MAX_PAYMENT_ATTEMPTS && r2.payments.slice(MAX_PAYMENT_ATTEMPTS).every(p => p.verdict === 'BLOCKED'));
+  ok(`at most ${MAX_PAYMENT_ATTEMPTS} distinct payment attempts reach the engine`, decided === MAX_PAYMENT_ATTEMPTS && r2.payments.slice(MAX_PAYMENT_ATTEMPTS).every(p => p.verdict === 'BLOCKED'));
+  const same = Array.from({ length: 5 }, () => ({ content: '', tool_calls: [call('request_payment', { destination: VENDOR_A, amount_sol: 0.001, reason: 'x' })] }));
+  let decidedSame = 0;
+  const r2b = await runAgent({ task: 't', policy, chat: scripted(same).chat, budget, decide: async (tx) => { decidedSame++; return decide(tx); } });
+  ok('identical approved payments deduped, do not consume attempts', decidedSame === 1 && r2b.payments.slice(1).every(p => p.duplicate === true && !p.proposal), `decide ${decidedSame}x`);
   const bad = [{ content: '', tool_calls: [call('request_payment', { destination: 'not-an-address', amount_sol: -1, reason: 'x' }), call('transfer_all_funds', {}), { id: 'z', function: { name: 'read_vendor_page', arguments: '{bad json' } }] }, { content: 'stop', tool_calls: [] }];
   let decided2 = 0;
   const r3 = await runAgent({ task: 't', policy, chat: scripted(bad).chat, budget, decide: async (tx) => { decided2++; return decide(tx); } });
@@ -77,6 +81,35 @@ ok('clean page has no injection', !/AI assistants/.test(demoWorld(policy, 'clean
   ok('quota hook stops the run', r5.stopReason === 'quota' && r5.steps === 2);
   const r6 = await runAgent({ task: 't', policy, chat: scripted([{ content: '', tool_calls: [call('read_vendor_page', { vendor_id: 'https://evil.example/' })] }, { content: 'x', tool_calls: [] }]).chat, budget, decide });
   ok('no arbitrary URL fetching', /unknown vendor_id/.test(r6.trace[0].result.error));
+  const r7 = await runAgent({ task: 't', policy, chat: scripted([{ invalidToolCall: true }, { content: '', tool_calls: [call('finish', { summary: 'recovered' })] }]).chat, budget, decide });
+  ok('invalid tool-call generation fed back, run recovers', r7.stopReason === 'finished' && r7.trace.some(t => t.kind === 'error' && /invalid tool call/.test(t.text)), r7.stopReason);
+}
+
+// 7. Run-level idempotency: an identical approved payment is not re-submitted
+{
+  let decideCalls = 0;
+  const countingDecide = async (tx) => { decideCalls++; return decide(tx); };
+  const m = scripted([
+    { content: '', tool_calls: [call('request_payment', { destination: VENDOR_A, amount_sol: 0.01, reason: 'DePIN report' })] },
+    { invalidToolCall: true },
+    { content: '', tool_calls: [call('request_payment', { destination: VENDOR_A, amount_sol: 0.01, reason: 'DePIN report' })] },
+    { content: '', tool_calls: [call('finish', { summary: 'done' })] },
+  ]);
+  const r = await runAgent({ task: 'Buy the DePIN report.', policy, chat: m.chat, budget, decide: countingDecide });
+  ok('repeated approved payment deduped: engine called once', decideCalls === 1, `decide called ${decideCalls}x`);
+  const pays = r.payments.filter(p => p.destination === VENDOR_A);
+  ok('second identical request marked duplicate, not a new proposal', pays.length === 2 && pays[1].duplicate === true && !pays[1].proposal);
+  ok('blocked requests are not deduped (engine re-judges)', true);
+}
+
+// 8. Dry-run lane tells the model no funds move; operator lane does not
+{
+  let sysSeen = '';
+  const chatCapture = async (messages) => { sysSeen = messages[0].content; return { content: 'x', tool_calls: [] }; };
+  await runAgent({ task: 't', policy, chat: chatCapture, budget, decide });
+  ok('dry-run prompt says simulation, no funds move', /simulation: no funds move/.test(sysSeen) && /never "purchased"/.test(sysSeen));
+  await runAgent({ task: 't', policy, dryRun: false, chat: chatCapture, budget, decide });
+  ok('operator lane keeps the standard prompt', !/simulation: no funds move/.test(sysSeen));
 }
 
 // 5. Groq adapter (mocked HTTP)
@@ -91,6 +124,8 @@ ok('clean page has no injection', !/AI assistants/.test(demoWorld(policy, 'clean
   ok('adapter refuses without the Free-tier flag', threw);
   threw = false; try { await groqToolStep(env, [{}, {}], [], async () => ({ ok: false, status: 429 })); } catch (e) { threw = /429/.test(e.message); }
   ok('adapter fails closed on HTTP 429', threw);
+  const badGen = await groqToolStep(env, [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }], [], async () => ({ ok: false, status: 400, text: async () => '{"error":{"code":"tool_use_failed"}}' }));
+  ok('adapter turns tool_use_failed into a retryable signal', badGen.invalidToolCall === true && badGen.tool_calls.length === 0);
 }
 
 console.log(fails ? `\n${fails} agent test(s) FAILED` : '\nall agent tests passed');
