@@ -5,8 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TrustLayer - Policy</title>
 <style>
-  :root{--bg:#0a0b10;--panel:#12141c;--panel2:#171a25;--line:#232838;--text:#e8eaf2;--dim:#9aa3b8;--faint:#5c6478;--green:#14f195;--violet:#9945ff;--red:#ff5c5c;--mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  :root{--bg:#0a0b10;--panel:#12141c;--panel2:#171a25;--line:#232838;--text:#e8eaf2;--dim:#9aa3b8;--faint:#707a90;--green:#14f195;--violet:#9945ff;--red:#ff5c5c;--mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
   *{margin:0;padding:0;box-sizing:border-box}
+  ::selection{background:#9945ff55;color:#fff}
+  :focus-visible{outline:2px solid var(--violet);outline-offset:2px;border-radius:4px}
+  html{scrollbar-color:#2a3145 var(--bg)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#2a3145;border-radius:6px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  a{text-underline-offset:3px}
+  input,select,textarea{caret-color:var(--green)}
   body{background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,"Segoe UI",Inter,Roboto,sans-serif}
   .wrap{max-width:760px;margin:0 auto;padding:0 32px}
   header{border-bottom:1px solid var(--line);padding:20px 0}
