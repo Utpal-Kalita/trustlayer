@@ -15,7 +15,7 @@ let { policy } = loadPolicy();
 if (policy.expiresAt && Date.now() > new Date(policy.expiresAt).getTime()) {
   throw new Error('policy expired at ' + policy.expiresAt + ' - expiry is a real control, not auto-renewed. Re-issue explicitly for a new demo window: node scripts/issue-policy.mjs');
 }
-const audit = new AuditLog();
+const audit = new AuditLog('data/audit.log', { cluster: new URL(RPC).host, policyVersion: policy.version ?? 0 });
 console.log('policy loaded:', policy.name, '| per-tx max', policy.maxSolPerTransaction, 'SOL | daily max', policy.maxSolPerDay, 'SOL');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
