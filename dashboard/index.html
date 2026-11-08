@@ -135,6 +135,8 @@
 <footer><div class="wrap">TrustLayer - MLH Solana Hackathon 2026 - Devnet only, no real funds.</div></footer>
 
 <script>
+const API_BASE = location.hostname.endsWith('github.io') ? 'https://trustlayer-api.onrender.com' : '';
+
 const $ = s => document.querySelector(s);
 const short = a => a.slice(0,6) + '...' + a.slice(-4);
 
@@ -161,7 +163,7 @@ const localLog = [];
 
 async function loadPolicy(){
   let p;
-  try{ p = await (await fetch('/api/policies')).json(); }
+  try{ p = await (await fetch(API_BASE+'/api/policies')).json(); }
   catch(e){ apiOnline = false; p = FALLBACK_POLICY; }
   {
     {
@@ -182,7 +184,7 @@ async function loadPolicy(){
 
 async function loadLog(){
   try{
-    const {entries} = await (await fetch('/api/audit')).json();
+    const {entries} = await (await fetch(API_BASE+'/api/audit')).json();
     if(!entries.length){ $('#log').innerHTML = '<li style="color:var(--faint)">No evaluations yet.</li>'; return; }
     $('#log').innerHTML = entries.slice().reverse().map(e=>{
       const t = new Date(e.ts);
@@ -213,7 +215,7 @@ $('#go').addEventListener('click', async () => {
   let d;
   try{
     if (!apiOnline) throw new Error('offline');
-    d = await (await fetch('/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
+    d = await (await fetch(API_BASE+'/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
   } catch(e) {
     d = evaluateLocal(FALLBACK_POLICY, {destination, amountSol});
     if (d.allow) localStorage.setItem('tl_spent', String(parseFloat(localStorage.getItem('tl_spent')||'0') + amountSol));
