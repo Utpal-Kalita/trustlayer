@@ -8,3 +8,4 @@ dist/
 .DS_Store
 test-ledger/
 data/
+!data/state.json
