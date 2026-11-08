@@ -22,10 +22,11 @@ verifies the on-chain content byte-exact and casts the second vote.
 
 `POST /api/agent` on the API worker:
 
-- Auth: `x-trustlayer-key` operator header (same key as `/api/execute`).
-  Not public: there is no browser-facing AI endpoint, so no secret is proxied
-  or embedded in the frontend. A public AI demo route would be a separate,
-  explicitly approved decision.
+- Auth: public and rate-limited (30 interpretations/hour per IP; the multi-step
+  `/api/agent/run` route allows 10 runs/hour per IP). Public calls are dry runs:
+  no reservation, no proposal, no funds moved. The operator header
+  `x-trustlayer-key` is required only for real proposals (`/api/execute`,
+  `/api/propose`) and never reaches the browser.
 - Body: `{"task": "<natural language payment task, max 500 chars>"}`.
 - Rate limit: 30 interpretations/hour per IP (best-effort, per isolate).
 - Response 200: `{ok, model, task, proposal: {destination, amountSol},
