@@ -156,7 +156,7 @@
       <div class="grid grid--top">
         <h2 id="console-h" class="span-5">Every proposal, checked in nine steps</h2>
         <div class="span-6 start-7 stack-4">
-          <p class="muted">The console lists what each agent proposed. Open one to see each check TrustLayer ran, in order, with the reason it passed or failed.</p>
+          <p>The console lists what each agent proposed. Open one to see each check TrustLayer ran, in order, with the reason it passed or failed.</p>
           <a class="link" href="https://github.com/utpal-kalita/trustlayer#api">Read the API</a>
         </div>
       </div>
@@ -232,7 +232,7 @@
           <a class="link" href="https://explorer.solana.com/tx/3NxbjhoT1QDPGTfFDeTQBo2gMsNenkMa8LS6qWYLeLF5RToGV7fSWquvWGvse6MewnRmDMS7wMARzc7y3JVNXQmE?cluster=devnet">See the approved payment on devnet</a>
         </div>
         <div class="frame frame--split span-6 start-7" data-visual data-fx="gradient-mesh" data-fx-seed="7">
-          <div class="dg" data-diagram><script type="application/json">{"layout":"lanes","alt":"An agent proposal goes to TrustLayer, which decodes it, simulates it on Solana devnet and checks the policy before the Squads vote.","input":{"label":"Agent proposal","icon":"ui:bot","sub":"x-agent-key"},"core":{"label":"TrustLayer"},"lanes":[{"label":"Decoded","icon":"ui:binary","done":true,"sub":"Every instruction"},{"label":"Simulated","icon":"si:solana","done":true,"sub":"Solana devnet"},{"label":"Policy passed","icon":"ui:shield-check","done":true,"sub":"Then the 2nd vote"}]}</script></div>
+          <div class="dg" data-diagram data-dg-still><script type="application/json">{"layout":"lanes","alt":"An agent proposal goes to TrustLayer, which decodes it, simulates it on Solana devnet and checks the policy before the Squads vote.","input":{"label":"Agent proposal","icon":"ui:bot","sub":"x-agent-key"},"core":{"label":"TrustLayer"},"lanes":[{"label":"Decoded","icon":"ui:binary","done":true,"sub":"Every instruction"},{"label":"Simulated","icon":"si:solana","done":true,"sub":"Solana devnet"},{"label":"Policy passed","icon":"ui:shield-check","done":true,"sub":"Then the 2nd vote"}]}</script></div>
         </div>
       </div>
     </div>
@@ -243,7 +243,7 @@
       <div class="grid grid--top">
         <div class="span-5 stack-4">
           <h2 id="api-h">An HTTP API with one agent key</h2>
-          <p class="muted">Agents send an <code>x-agent-key</code> header. Execute runs every check again and ignores any approval the client claims.</p>
+          <p>Agents send an <code>x-agent-key</code> header. Execute runs every check again and ignores any approval the client claims.</p>
           <ul class="api-rows">
             <li><span class="m">POST</span><code>/api/agents</code></li>
             <li><span class="m">POST</span><code>/api/policies</code></li>
@@ -254,7 +254,7 @@
           </ul>
         </div>
         <div class="frame frame--split frame--lit span-6 start-7">
-          <div class="stage stage--fade-b"><div class="at-rise to-edge" style="--w: min(520px, 100% - 48px); --ay: 56px">
+          <div class="stage stage--fade-b"><div class="at-corner" style="--ax: 40px; --ay: 48px">
             <div class="ui ui-panel ui-code" data-ui="code" data-ui-still>
               <div class="ui-code__tabs">
                 <span class="ui-code__tab is-on"><i class="ui-code__lang">JS</i>evaluate</span>
@@ -283,7 +283,7 @@
       <div class="grid grid--top">
         <div class="span-5 stack-4">
           <h2 id="limits-h">Questions and limits</h2>
-          <p class="muted">Built for the MLH Solana Hackathon, 6 to 8 November 2026.</p>
+          <p>Built for the MLH Solana Hackathon, 6 to 8 November 2026.</p>
           <a class="link" href="https://github.com/utpal-kalita/trustlayer#api">Read the API</a>
         </div>
         <div class="faq span-6 start-7">

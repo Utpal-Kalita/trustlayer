@@ -84,3 +84,5 @@
 .key .tl-mono { color: var(--muted); }
 #api .frame--split { --ratio: 96%; }
 @media (max-width: 639px) { .ui-panel.key { padding: 24px; } .keys { margin-top: var(--s-6); } }
+.closing .close__word { font-size: clamp(48px, 12.4vw, 176px); }
+@media (min-width: 640px) and (max-width: 1023px) { #api, #limits { --h: 2; } }
