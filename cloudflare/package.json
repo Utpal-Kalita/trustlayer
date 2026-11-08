@@ -11,5 +11,6 @@
   "license": "ISC",
   "dependencies": {
     "wrangler": "^4.158.0"
-  }
+  },
+  "type": "module"
 }

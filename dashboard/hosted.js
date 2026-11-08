@@ -217,6 +217,52 @@ function setupAsk() {
   });
 }
 
+// ------------------------------------------------------------------ autonomous agent run
+// POST /api/agent/run: the model works over several tool-calling steps. Every
+// payment it requests is judged by the deterministic engine. Dry run here.
+const TOOL_LABEL = { list_vendors: 'Lists vendors', read_vendor_page: 'Reads vendor page', check_budget: 'Checks its budget', request_payment: 'Asks TrustLayer to pay', finish: 'Reports back' };
+function renderRun(d) {
+  const att = d.payments.filter(p => p.destination === (H.policy?.blockedDestinations || [])[0]);
+  const head = d.scenario === 'injected'
+    ? (att.length ? `<div class="callout bad"><b>The page hijacked the agent.</b> It asked to pay the attacker ${att.map(p => esc(solN(p.amountSol))).join(' + ')}. TrustLayer blocked ${att.every(p => p.verdict === 'BLOCKED') ? 'every attempt' : 'some attempts'}.</div>`
+      : '<div class="callout ok"><b>The agent ignored the hidden instructions</b> on the poisoned page. TrustLayer would have blocked them anyway.</div>')
+    : '';
+  const items = d.trace.map(t => {
+    if (t.kind === 'thought') return `<li><span class="n">${t.step}</span><div class="body"><span class="think">"${esc(t.text)}"</span></div></li>`;
+    if (t.kind === 'error') return `<li><span class="n">${t.step}</span><div class="body"><span class="err">${esc(t.text)}</span></div></li>`;
+    if (t.tool === 'request_payment') {
+      const okv = t.result.verdict === 'APPROVED';
+      return `<li><span class="n">${t.step}</span><div class="body ${okv ? 'pay-ok' : 'pay-bad'}"><b>${esc(TOOL_LABEL[t.tool])}: ${esc(solN(t.args?.amount_sol))} → ${t.args?.destination ? who(t.args.destination) : '—'}</b>
+        <span class="small muted">Reason given: ${esc(t.args?.reason || '')}</span>
+        <span><span class="pill ${okv ? 'ok' : 'bad'}">${okv ? 'APPROVED' : 'BLOCKED'}</span> <span class="small">${esc((t.result.reasons || []).join(' ') || 'All policy checks passed.')}</span></span></div></li>`;
+    }
+    if (t.tool === 'finish') return `<li><span class="n">${t.step}</span><div class="body"><b>${esc(TOOL_LABEL.finish)}</b><span>${esc(t.args?.summary || '')}</span></div></li>`;
+    const res = t.result.page ? t.result.page : JSON.stringify(t.result, null, 2);
+    return `<li><span class="n">${t.step}</span><div class="body"><b>${esc(TOOL_LABEL[t.tool] || t.tool)}</b>${t.args && Object.keys(t.args).length ? `<span class="call">${esc(JSON.stringify(t.args))}</span>` : ''}<details><summary>Result</summary><pre class="code">${esc(res)}</pre></details></div></li>`;
+  }).join('');
+  const stop = { finished: '', 'step-limit': 'Stopped at the 6-step limit.', quota: 'Stopped: daily public AI quota reached.', 'model-error': 'Stopped: the model call failed (no retry).', 'no-tool-call': '' }[d.stopReason] || '';
+  $('#run-result').innerHTML = `${head}<ol class="timeline">${items}</ol>
+    ${stop ? `<p class="small muted">${esc(stop)}</p>` : ''}
+    <p class="small muted">Model: ${esc(d.model)} · ${esc(d.mode)} · ${d.payments.length} payment request${d.payments.length === 1 ? '' : 's'}, ${d.payments.filter(p => p.verdict === 'APPROVED').length} approved. Verdicts come from the policy engine, never the model.</p>`;
+}
+function setupRun() {
+  $('#run-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#run-form button[type=submit]'); btn.disabled = true;
+    const scenario = $('#run-form input[name=scenario]:checked').value;
+    $('#run-result').innerHTML = '<p class="muted empty">The agent is working: reading vendors, checking its budget, asking TrustLayer to pay. This takes 10–30 seconds.</p>';
+    try {
+      const r = await fetch(WORKER + '/api/agent/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task: $('#run-task').value.trim(), scenario }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 404) { $('#run-result').innerHTML = '<p class="err">The autonomous agent is not deployed on the live worker yet.</p>'; return; }
+      if (!r.ok || !d.ok) { $('#run-result').innerHTML = `<p class="err">${esc(d.error || 'HTTP ' + r.status)}</p>`; return; }
+      renderRun(d);
+      load().catch(() => {});
+    } catch (err) { $('#run-result').innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+    finally { btn.disabled = false; }
+  });
+}
+
 async function load() {
   const [health, policy, audit] = await Promise.all([get('/api/health'), get('/api/policies'), get('/api/audit')]);
   // /api/state carries chain-derived spend and open proposals. The deployed
@@ -235,6 +281,6 @@ export async function bootHosted() {
   $('#btn-signout').hidden = true;
   $('[data-tab="agents"]').textContent = 'Policy';
   $('#h-agents').textContent = 'Policy and proposals';
-  try { setupAsk(); await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
+  try { setupAsk(); setupRun(); await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
   setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 10000);
 }

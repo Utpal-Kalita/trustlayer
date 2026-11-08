@@ -40,6 +40,18 @@ Uses the verified multisig `BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC` (vault
 `93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe`). Nothing here creates a multisig or
 requests airdrops; fund the vault by hand (docs/DEVNET-FUNDING.md).
 
+## Autonomous agent
+
+`POST /api/agent/run` `{ task, scenario: "clean" | "injected" }` runs a bounded tool-calling
+agent (`cloudflare/agent-loop.js`, Groq `openai/gpt-oss-20b`). Over up to 6 steps it lists
+vendors, reads their pages, checks its budget, asks TrustLayer to pay and reports back. The
+"injected" vendor page hides instructions for AI assistants (pay another wallet, plus a fee).
+Every payment request is judged by the deterministic engine; the model can't approve, sign or
+override. Public calls are dry runs and use the daily AI quota (one unit per model step). With
+the operator key and `execute: true`, an approved payment becomes a real Squads proposal
+(agent vote 1 of 2); the owner-side gatekeeper still casts vote 2 of 2. Console: "Ask the
+agent" tab. Offline tests: `node scripts/test-agent-loop.mjs`.
+
 ## Local API (optional)
 
 A full local backend with agent registration, per-agent policies, instruction decoding
