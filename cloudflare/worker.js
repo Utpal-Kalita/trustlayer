@@ -1,3 +1,4 @@
+import { groqChat, GROQ_MODEL } from './groq.js';
 import { Connection, Keypair, PublicKey, SystemProgram, TransactionMessage } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
 // TrustLayer API — Cloudflare Worker (read-only parity + durable gate prototype)
@@ -131,7 +132,7 @@ export class PolicyGate {
     for (const k of Object.keys(this.cache.inflight)) t += this.cache.inflight[k].lamports;
     return t;
   }
-  pruneExpiredInflight() {
+  async pruneExpiredInflight() {
     const now = Date.now();
     let changed = false;
     for (const k of Object.keys(this.cache.inflight || {})) {
@@ -139,7 +140,24 @@ export class PolicyGate {
       // squads proposals (txIndex set) never TTL-expire: they stay reserved until the
       // chain authoritatively shows execution (memo-derived) - fail closed otherwise
       if (e.txIndex != null) continue;
-      if (now > e.expiresAt) { delete this.cache.inflight[k]; changed = true; }
+      if (now > e.expiresAt) {
+        // Ambiguous: the DO may have lost the post-proposal write (reset mid-call).
+        // Probe the FULL on-chain index range for this authorization's memo before
+        // releasing; only a complete scan without a match releases. Any gap (RPC
+        // error, history beyond the scan cap) fails closed and keeps it reserved.
+        const policy = JSON.parse(this.env.POLICY_JSON);
+        const memo = `trustlayer:${this.env.POLICY_ID}:v${policy.version}:${k}`;
+        let found = null;
+        try { found = await findProposalByMemo(this.env, memo); }
+        catch { continue; } // probe inconclusive: fail closed, keep the reservation
+        if (found != null) {
+          e.txIndex = found; e.expiresAt = null; e.status = 'pending-gatekeeper';
+          this.cache.audit.push({ ts: new Date().toISOString(), kind: 'reservation-recovered', authId: k, txIndex: found, note: 'TTL expired but the chain shows this proposal; held until execution or operator cancel after on-chain rejection' });
+        } else {
+          delete this.cache.inflight[k];
+        }
+        changed = true;
+      }
     }
     return changed;
   }
@@ -172,7 +190,7 @@ export class PolicyGate {
           // clear inflight reservations the chain shows as executed; never TTL-release squads entries
           for (const k of Object.keys(this.cache.inflight || {}))
             if ((this.cache.usedAuthIds || []).includes(k)) delete this.cache.inflight[k];
-          this.pruneExpiredInflight();
+          await this.pruneExpiredInflight();
           this.cache.bootstrappedAt = new Date().toISOString();
           await this.state.storage.put('gate', this.cache);
           return Response.json({ ok: true, executedLamports: this.cache.executedLamports, usedAuthIds: this.cache.usedAuthIds });
@@ -193,6 +211,20 @@ export class PolicyGate {
         this.cache.audit.push({ ts: new Date().toISOString(), kind: 'reservation-cancelled', authId, txIndex: e.txIndex ?? null, note: 'admin release; caller asserts proposal rejected/cancelled on chain' });
         await this.state.storage.put('gate', this.cache);
         return Response.json({ ok: true, released: authId });
+      });
+    }
+    // Durable global daily cap for the PUBLIC, non-executing AI interpretation lane.
+    // 100 interpretations/day = at most 200 model calls/day, well under the Groq
+    // free plan's 1K requests/day for openai/gpt-oss-20b. Single-writer DO = exact.
+    if (url.pathname === '/agent-quota' && req.method === 'POST') {
+      return this.state.blockConcurrencyWhile(async () => {
+        const CAP = 100;
+        const day = new Date().toISOString().slice(0, 10);
+        if (this.cache.aiQuotaDay !== day) { this.cache.aiQuotaDay = day; this.cache.aiQuotaUsed = 0; }
+        const allowed = (this.cache.aiQuotaUsed || 0) < CAP;
+        if (allowed) this.cache.aiQuotaUsed = (this.cache.aiQuotaUsed || 0) + 1;
+        await this.state.storage.put('gate', this.cache);
+        return Response.json({ allowed, used: this.cache.aiQuotaUsed, cap: CAP, day });
       });
     }
     if (url.pathname === '/agent' && req.method === 'POST') {
@@ -238,7 +270,7 @@ export class PolicyGate {
           await this.state.storage.put('gate', this.cache);
           return Response.json({ ok: false, stage: 'validate', error: 'AI proposal failed shape validation (destination/amount)', proposal: tx, note: NOTE }, { status: 422 });
         }
-        this.pruneExpiredInflight();
+        await this.pruneExpiredInflight();
         const bErr = await this.ensureBootstrap();
         if (bErr) return Response.json({ ok: false, error: 'ledger unavailable: ' + bErr }, { status: 503 });
         const r = evaluatePolicy(policy, tx, this.committed());
@@ -262,7 +294,7 @@ export class PolicyGate {
     if (url.pathname === '/evaluate') {
       const tx = await req.json();
       return this.state.blockConcurrencyWhile(async () => {
-        this.pruneExpiredInflight();
+        await this.pruneExpiredInflight();
         const bErr = await this.ensureBootstrap();
         if (bErr)
           return Response.json({ allow: false, reasons: ['ledger unavailable: ' + bErr], dryRun: true }, { status: 503 });
@@ -277,7 +309,7 @@ export class PolicyGate {
     if (url.pathname === '/propose') {
       const tx = await req.json();
       return this.state.blockConcurrencyWhile(async () => {
-        this.pruneExpiredInflight();
+        await this.pruneExpiredInflight();
         const bErr = await this.ensureBootstrap();
         if (bErr)
           return Response.json({ ok: false, error: 'ledger unavailable: ' + bErr }, { status: 503 });
@@ -295,7 +327,7 @@ export class PolicyGate {
     if (url.pathname === '/execute' && req.method === 'POST') {
       const tx = await req.json();
       return this.state.blockConcurrencyWhile(async () => {
-        this.pruneExpiredInflight();
+        await this.pruneExpiredInflight();
         if (!this.env.AGENT_SECRET || !this.env.RELAY_KEY)
           return Response.json({ ok: false, reasons: ['signing not provisioned on this host'], signing: 'disabled' }, { status: 503 });
         const bErr = await this.ensureBootstrap();
@@ -327,7 +359,7 @@ export class PolicyGate {
           return Response.json({ ok: false, reasons: ['proposal submission failed: ' + String(e).slice(0, 200)], authId, status: 'failed-no-funds-moved' }, { status: 502 });
         }
         // hold the reservation until the chain shows execution (memo-derived) or the proposal window lapses
-        this.cache.nextTxIndex = txIndexNum + 1;
+        this.cache.nextTxIndex = Number(proposed.transactionIndex) + 1;
         this.cache.inflight[authId] = { lamports, expiresAt: null, txIndex: proposed.transactionIndex, status: 'pending-gatekeeper' };
         this.cache.bootstrappedAt = null; // force chain re-derivation on next request
         this.cache.audit.push({ ts: new Date().toISOString(), kind: 'proposed', authId, amountSol: tx.amountSol, destination: tx.destination, txIndex: proposed.transactionIndex, sigs: proposed.sigs, memo });
@@ -393,13 +425,45 @@ async function signAndSend(env, dest, lamports, memo) {
   }
   throw new Error('sendTransaction failed: ' + lastErr);
 }
+function squadsConn(env) {
+  return new Connection(env.RPC_URL, { commitment: 'confirmed', fetch: (url, opts) => { opts.headers['x-relay-key'] = env.RELAY_KEY; return fetch(url, opts); } });
+}
+// Authoritative chain probe for an ambiguous reservation: did a vault transaction
+// carrying this exact authorization memo land on-chain? Scans the FULL index range
+// (1..last), so absence is authoritative. Throws - and the caller fails closed
+// (keeps the reservation) - on RPC errors or when the range exceeds the scan cap,
+// because an incomplete scan cannot prove absence.
+async function findProposalByMemo(env, memo, scanCap = 200) {
+  const conn = squadsConn(env);
+  const multisigPda = new PublicKey(env.MULTISIG);
+  const ms = await multisig.accounts.Multisig.fromAccountAddress(conn, multisigPda);
+  const last = Number(ms.transactionIndex.toString());
+  if (last > scanCap) throw new Error('multisig history exceeds scan cap; inconclusive');
+  const MEMO = new PublicKey(MEMO_PROGRAM_V2);
+  for (let i = last; i >= 1; i--) {
+    const [pda] = multisig.getTransactionPda({ multisigPda, index: BigInt(i) });
+    let vtx = null;
+    try { vtx = await multisig.accounts.VaultTransaction.fromAccountAddress(conn, pda); } catch { continue; }
+    const keys = vtx.message.accountKeys;
+    for (const ix of vtx.message.instructions) {
+      if (keys[ix.programIdIndex].equals(MEMO) && Buffer.from(ix.data).toString('utf8') === memo) return i;
+    }
+  }
+  return null;
+}
 async function squadsPropose(env, dest, lamports, memoText, txIndexNum) {
-  const conn = new Connection(env.RPC_URL, { commitment: 'confirmed', fetch: (url, opts) => { opts.headers['x-relay-key'] = env.RELAY_KEY; return fetch(url, opts); } });
+  const conn = squadsConn(env);
   const agent = Keypair.fromSecretKey(b58decode(env.AGENT_SECRET.trim()));
   const multisigPda = new PublicKey(env.MULTISIG);
   const vaultPda = new PublicKey(env.VAULT);
-  // txIndex is DO-tracked (single writer): seeded from chain at deploy, incremented per proposal
-  const transactionIndex = BigInt(txIndexNum);
+  // txIndex is DO-tracked (single writer), floored from the chain so a DO reset
+  // can never reuse an index that already exists on-chain
+  let transactionIndex = BigInt(txIndexNum);
+  try {
+    const ms = await multisig.accounts.Multisig.fromAccountAddress(conn, multisigPda);
+    const chainNext = BigInt(ms.transactionIndex.toString()) + 1n;
+    if (chainNext > transactionIndex) transactionIndex = chainNext;
+  } catch {}
   const bh = async () => (await conn.getLatestBlockhash('confirmed')).blockhash;
   const innerMsg = new TransactionMessage({
     payerKey: vaultPda,
@@ -481,14 +545,23 @@ export default {
         return new Response(s.body, { status: s.status, headers: { ...CORS, 'content-type': 'application/json' } });
       }
       if (url.pathname === '/api/agent' && req.method === 'POST') {
-        if (!env.API_KEY || req.headers.get('x-trustlayer-key') !== env.API_KEY) return Response.json({ok:false,error:'AI demo restricted to operator until free-plan quota verification'}, {status:401,headers:CORS});
+        const isOperator = env.API_KEY && req.headers.get('x-trustlayer-key') === env.API_KEY;
+        // Public lane (no operator key): interpretation only - creates no reservation,
+        // moves no funds. Durable global daily cap enforced in the DO; per-IP hourly
+        // cap below; Groq 429/error fails closed with no retry and no fallback.
+        if (!isOperator) {
+          const q = await gate().fetch(new Request('https://do/agent-quota', { method: 'POST' }));
+          const qj = await q.json().catch(() => null);
+          if (!qj || qj.allowed !== true)
+            return Response.json({ ok: false, error: 'daily public AI interpretation quota reached (' + ((qj && qj.cap) || 100) + '/day); try again tomorrow or ask the operator', quota: qj || null }, { status: 429, headers: { ...CORS, 'content-type': 'application/json' } });
+        }
         // AI task interpretation (PRD Module 7), handled in the stateless worker so it
         // always runs the latest deployed code: the LLM interprets the task, the
         // DETERMINISTIC policy engine in the Durable Object decides, the LLM explains
         // the verdict. The LLM can never approve, execute, or override - this route
         // creates no reservation and moves no funds.
         const NOTE = 'AI interprets the task and explains the verdict; the deterministic policy engine decides. AI output can never approve a payment. No execution or reservation happens on this route.';
-        const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+        const MODEL = GROQ_MODEL;
         const ip = req.headers.get('cf-connecting-ip') || 'unknown';
         const now = Date.now();
         globalThis.__aiRate = globalThis.__aiRate || {};
@@ -503,7 +576,7 @@ export default {
         const vendorA = (policy.allowedDestinations || [])[0] || '';
         let proposal = null, aiError = null;
         try {
-          const r1 = await env.AI.run(MODEL, { max_tokens: 256, messages: [
+          const r1 = await groqChat(env, { json: true, max_tokens: 512, messages: [
             { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or {"error":"why"} if the task is not a clear SOL payment. Never invent an address; use only an address present in this prompt or literally given in the task.' },
             { role: 'user', content: task },
           ] });
@@ -524,7 +597,7 @@ export default {
           return Response.json({ ok: false, stage: 'policy', error: 'policy engine unavailable', note: NOTE }, { status: 503, headers: { ...CORS, 'content-type': 'application/json' } });
         let explanation = null;
         try {
-          const r2 = await env.AI.run(MODEL, { max_tokens: 96, messages: [
+          const r2 = await groqChat(env, { max_tokens: 256, messages: [
             { role: 'system', content: 'Explain a payment policy verdict in at most 2 short sentences. The verdict is final, made by deterministic rules - never contradict or soften it.' },
             { role: 'user', content: 'Verdict: ' + (verdict.allow ? 'ALLOWED' : 'BLOCKED') + '. Reasons: ' + ((verdict.reasons || []).join('; ') || 'every policy check passed') + '. Payment requested: ' + tx.amountSol + ' SOL to ' + tx.destination + '.' },
           ] });
