@@ -99,6 +99,23 @@ const server = http.createServer(async (req, res) => {
       return json(res, 502, { error: 'on-chain flow failed', detail: String(e).slice(0, 300) });
     }
   }
+  // Read-only JSON-RPC proxy: lets browser/edge clients (e.g. Cloudflare
+  // Workers, whose egress the public devnet RPC blocks) read chain state.
+  // Whitelisted read methods only; no sendTransaction, no keys here.
+  if (req.method === 'POST' && url.pathname === '/api/rpc') {
+    const ALLOWED = new Set(['getSignaturesForAddress', 'getTransaction', 'getHealth', 'getLatestBlockhash', 'getBalance']);
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
+    return req.on('end', async () => {
+      try {
+        const { method, params, id } = JSON.parse(body);
+        if (!ALLOWED.has(method)) return json(res, 403, { error: 'method not allowed' });
+        const r = await fetch(process.env.SOLANA_RPC || 'https://api.devnet.solana.com', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: id ?? 1, method, params }) });
+        const j = await r.json();
+        return json(res, r.ok ? 200 : 502, j);
+      } catch (e) { return json(res, 400, { error: String(e) }); }
+    });
+  }
   if (req.method === 'POST' && url.pathname === '/api/evaluate') {
     const tx = await readBody(req);
     const decision = evaluate(policy, tx, audit);
