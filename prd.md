@@ -499,7 +499,7 @@ Objective: make the "AI agent" a real AI agent. A user - or an attacker - gives 
 How it works:
 
 1. A plain-language task (for example "Pay Vendor A 0.01 SOL for the research summary") is sent to POST /api/agent.
-2. An LLM extracts a structured proposal {destination, amountSol}. It is instructed to use only known or explicitly given addresses and may return an error instead of guessing. Runtime: Cloudflare Workers AI (@cf/meta/llama-3.3-70b-instruct-fp8-fast), inside the same worker. Successful runtime test verified on November 8, 2026. No separate model API key is needed; usage must stay within the existing free allowance.
+2. An LLM extracts a structured proposal {destination, amountSol}. It is instructed to use only known or explicitly given addresses and may return an error instead of guessing. Runtime: Groq (openai/gpt-oss-20b) via the Groq API, called server-side from the worker. Successful runtime test verified on November 8, 2026 (two live AI-to-chain executions on devnet). The model API key is a worker secret only; it is not in this repo or the frontend. Usage stays on the Groq free tier with no paid fallback.
 3. The proposal goes through the exact same deterministic policy evaluation as any other transaction (Module 4). LLM output is untrusted input, never a decision.
 4. The LLM writes a short human-readable explanation of the verdict. The explanation can never change the verdict.
 5. Execution is unchanged: an approved proposal still needs the key-gated /api/execute call, the Squads proposal, and the independent owner-side gatekeeper (Module 5).
@@ -590,7 +590,7 @@ Blockchain	Solana
 Blockchain SDK	Solana Web3.js
 Transaction simulation	Solana RPC
 Multisig	Squads Protocol SDK
-AI task interpretation and explanation	Cloudflare Workers AI (Llama 3.3 70B Instruct FP8 Fast) - LLM output is untrusted input, never a decision
+AI task interpretation and explanation	Groq (openai/gpt-oss-20b) - LLM output is untrusted input, never a decision
 Deployment	Vercel / Render
 System architecture
                 USER
