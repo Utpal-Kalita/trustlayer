@@ -225,8 +225,8 @@ function renderRun(d) {
   const att = d.payments.filter(p => p.destination === (H.policy?.blockedDestinations || [])[0]);
   const banner = d.mode === 'dry-run' ? '<div class="callout"><b>Dry run - no funds move.</b> APPROVED means the policy would allow the payment; nothing was purchased or transferred. The model\'s own report below is its wording, not a receipt.</div>' : '';
   const head = d.scenario === 'injected'
-    ? (att.length ? `<div class="callout bad"><b>The page hijacked the agent.</b> It asked to pay the attacker ${att.map(p => esc(solN(p.amountSol))).join(' + ')}. TrustLayer blocked ${att.every(p => p.verdict === 'BLOCKED') ? 'every attempt' : 'some attempts'}.</div>`
-      : '<div class="callout ok"><b>The agent ignored the hidden instructions</b> on the poisoned page. TrustLayer would have blocked them anyway.</div>')
+    ? (att.length ? `<div class="callout bad"><b>The page hijacked the ${d.profile === 'naive' ? 'careless ' : ''}agent.</b> It asked to pay the attacker ${att.map(p => esc(solN(p.amountSol))).join(' + ')}. TrustLayer blocked ${att.every(p => p.verdict === 'BLOCKED') ? 'every attempt' : 'some attempts'}.</div>`
+      : '<div class="callout ok"><b>The agent did not ask to pay the attacker</b> this time. Model runs vary; if it had, the policy blocks that wallet.</div>')
     : '';
   const items = d.trace.map(t => {
     if (t.kind === 'thought') return `<li><span class="n">${t.step}</span><div class="body"><span class="think">"${esc(t.text)}"</span></div></li>`;
@@ -251,9 +251,10 @@ function setupRun() {
     e.preventDefault();
     const btn = $('#run-form button[type=submit]'); btn.disabled = true;
     const scenario = $('#run-form input[name=scenario]:checked').value;
+    const profile = $('#run-form input[name=profile]:checked').value;
     $('#run-result').innerHTML = '<p class="muted empty">The agent is working: reading vendors, checking its budget, asking TrustLayer to pay. This takes 10–30 seconds.</p>';
     try {
-      const r = await fetch(WORKER + '/api/agent/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task: $('#run-task').value.trim(), scenario }) });
+      const r = await fetch(WORKER + '/api/agent/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task: $('#run-task').value.trim(), scenario, profile }) });
       const d = await r.json().catch(() => ({}));
       if (r.status === 404) { $('#run-result').innerHTML = '<p class="err">The autonomous agent is not deployed on the live worker yet.</p>'; return; }
       if (!r.ok || !d.ok) { $('#run-result').innerHTML = `<p class="err">${esc(d.error || 'HTTP ' + r.status)}</p>`; return; }
@@ -284,4 +285,4 @@ export async function bootHosted() {
   $('#h-agents').textContent = 'Policy and proposals';
   try { setupAsk(); setupRun(); await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
   setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 10000);
-}
+    }
