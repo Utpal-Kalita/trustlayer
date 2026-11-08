@@ -95,3 +95,11 @@
   #api .at-corner { --ax: 16px; right: 16px; }
 }
 @media (max-width: 359px) { header.nav .nav__bar > .nav__actions { display: none !important; } header.nav .nav__logo { min-width: 0; } }
+
+/* Targeted mobile review fixes: preserve layout while keeping controls and diagram labels readable. */
+@media (max-width: 359px) {
+  header.nav:not(.is-open) .nav__bar > .nav__toggle { margin-left: auto; }
+}
+@media (max-width: 639px) {
+  #multisig .dg .dg-cap { color: #111; font-size: 14px; line-height: 18px; background: rgba(255,255,255,.94); border-radius: 4px; padding: 2px 4px; }
+}
