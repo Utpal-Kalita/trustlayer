@@ -2,9 +2,12 @@
   "name": "trustlayer",
   "version": "0.1.0",
   "description": "The Permission Layer for AI Agents - MLH Solana Hackathon 2026",
-  "main": "index.js",
   "scripts": {
-    "test": "node scripts/test-policy.mjs"
+    "start": "node src/api/server.js",
+    "test": "node scripts/test-policy.mjs && node scripts/test-api.mjs",
+    "demo:setup": "node scripts/setup-demo.mjs",
+    "demo:agent": "node scripts/demo-agent.mjs",
+    "spike": "node scripts/spike.mjs"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +16,7 @@
   "dependencies": {
     "@solana/web3.js": "^1.99.0",
     "@sqds/multisig": "^2.1.4",
-    "bs58": "^6.0.0"
+    "bs58": "^6.0.0",
+    "@noble/curves": "^1.9.7"
   }
 }
