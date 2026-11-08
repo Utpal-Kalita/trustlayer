@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TrustLayer: wallet permissions for AI agents on Solana</title>
-<meta name="description" content="TrustLayer decodes, simulates and policy-checks every Solana transaction an AI agent proposes, then casts the second vote in a Squads 2-of-2 multisig.">
+<meta name="description" content="TrustLayer decodes, simulates and policy-checks every Solana transaction an AI agent proposes, then requires an independent owner-side gatekeeper for the second Squads approval.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="TrustLayer: wallet permissions for AI agents on Solana">
-<meta property="og:description" content="An agent proposes, TrustLayer checks the policy, and only then votes in a Squads 2-of-2.">
+<meta property="og:description" content="An agent proposes, TrustLayer checks the policy, and an independent owner-side gatekeeper verifies and approves execution.">
 <meta property="og:image" content="share.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -69,7 +69,7 @@
     <div class="wrap"><div class="hero-text grid hero__grid">
       <div class="span-3">
         <h1 id="hero-h">Wallet permissions for AI agents</h1>
-        <p class="hero__lead">Your agent proposes a Solana transaction. TrustLayer decodes it, simulates it and checks your policy before it casts the second vote in a Squads 2-of-2.</p>
+        <p class="hero__lead">Your agent proposes a Solana transaction. TrustLayer decodes it, simulates it and checks your policy before an independent owner-side gatekeeper verifies and casts the second Squads vote.</p>
       </div>
       <div class="ly-collage span-6 start-4" role="img" aria-label="Three TrustLayer decisions: 0.01 SOL to Vendor A approved, 0.5 SOL blocked by the per-transaction limit, and 0.01 SOL to an unknown wallet blocked">
         <div class="ly-collage__set is-on">
@@ -134,7 +134,7 @@
     <div class="wrap">
       <div data-moment="liquid-type" class="section-head" style="max-width:none">
         <h2 id="statement-h" class="mo-lt__type">The agent never holds the wallet</h2>
-        <p class="t-lead measure">It holds one key of a Squads 2-of-2 multisig. TrustLayer holds the other and votes only after the policy passes. The policy engine is plain code, so no model can talk its way past it.</p>
+        <p class="t-lead measure">It holds one key of a Squads 2-of-2 multisig. The owner-side gatekeeper holds the other and votes only after the policy passes and the on-chain proposal is independently verified. The policy engine is plain code, so no model can talk its way past it.</p>
       </div>
       <div class="grid keys">
         <div class="ui ui-panel key span-6" role="img" aria-label="Agent key alone: execute failed on devnet with Squads error 0x1774">
@@ -333,4 +333,4 @@
 <script type="module" src="assets/layout/layout.js"></script>
 <script type="module" src="assets/diagrams/mount.js"></script>
 </body>
-     </html>
+</html>
