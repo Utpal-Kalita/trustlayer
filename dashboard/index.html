@@ -154,36 +154,19 @@
 <footer><div class="wrap">TrustLayer - MLH Solana Hackathon 2026 - Devnet only, no real funds.</div></footer>
 
 <script>
-const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('onrender.com')) ? '' : 'https://trustlayer-api-p58e.onrender.com';
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? '' : 'https://trustlayer-api-cf.adzeo2.workers.dev';
 
 const $ = s => document.querySelector(s);
 const short = a => a.slice(0,6) + '...' + a.slice(-4);
 
-// Offline fallback: the same policy as policies/default.json, evaluated in-browser
-// when the API is not running (e.g. static hosting). Same rules, same verdicts.
-const FALLBACK_POLICY = {"version":1,"name":"default-hackathon-policy","maxSolPerTransaction":0.05,"maxSolPerDay":0.1,"allowedPrograms":["11111111111111111111111111111111"],"allowedDestinations":["HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z"],"blockedDestinations":["7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM"],"maxSolTotal":0.1,"allowedActions":["transfer"],"expiresAt":new Date(Date.now()+2*3600*1000).toISOString()};
-let apiOnline = true;
-function evaluateLocal(policy, tx){
-  const reasons = [];
-  const amt = Number(tx.amountSol);
-  const dest = String(tx.destination||'');
-  const action = String(tx.action||'transfer');
-  if (policy.expiresAt && Date.now() > new Date(policy.expiresAt).getTime()) reasons.push(`policy expired at ${policy.expiresAt}`);
-  if (policy.allowedActions?.length && !policy.allowedActions.includes(action)) reasons.push(`action "${action}" not permitted by policy`);
-  if (!(amt > 0)) reasons.push('invalid amount');
-  if (amt > policy.maxSolPerTransaction) reasons.push(`amount ${amt} SOL exceeds per-transaction limit ${policy.maxSolPerTransaction} SOL`);
-  const spentTotal = parseFloat(localStorage.getItem('tl_spent') || '0');
-  if (policy.maxSolTotal != null && spentTotal + amt > policy.maxSolTotal) reasons.push(`total budget exceeded: ${spentTotal.toFixed(4)} spent + ${amt} requested > ${policy.maxSolTotal} SOL total`);
-  if (policy.blockedDestinations.includes(dest)) reasons.push(`destination ${dest} is explicitly blocked`);
-  else if (policy.allowedDestinations.length && !policy.allowedDestinations.includes(dest)) reasons.push(`destination ${dest} not in allowlist`);
-  return { allow: reasons.length === 0, reasons };
-}
-const localLog = [];
+// No offline fallback: verdicts must come from the live policy engine.
+// Simulated local results could be mistaken for real decisions, so when the
+// backend is unreachable this page says so instead of fabricating an answer.
 
 async function loadPolicy(){
   let p;
   try{ p = await (await fetch(API_BASE+'/api/policies')).json(); }
-  catch(e){ apiOnline = false; p = FALLBACK_POLICY; }
+  catch(e){ $('#policy').innerHTML = '<div style="color:var(--faint);font-size:13px">Live backend unreachable - policy could not be loaded. This page never shows a simulated substitute.</div>'; return; }
   {
     {
     $('#policy').innerHTML = `
@@ -197,7 +180,6 @@ async function loadPolicy(){
       <div style="margin-top:10px;color:var(--dim);font-size:13px">Blocked destinations</div>
       <div>${(p.blockedDestinations||[]).map(a=>`<span class="addr bad">${short(a)}</span>`).join('')}</div>`;
   }
-  if (!apiOnline) $('#policy').insertAdjacentHTML('beforeend', '<div style="margin-top:12px;color:var(--faint);font-size:12px">Static demo mode - policy evaluated in-browser. Run src/api/server.js locally for the live backend.</div>');
   }
 }
 
@@ -213,11 +195,7 @@ async function loadLog(){
       return `<li><span class="when">${when}</span><span class="d ${ok?'a':'r'}">${ok?'ALLOWED':'REJECTED'}</span><span class="what">${what}</span></li>`;
     }).join('');
   }catch(e){
-    if (!localLog.length){ $('#log').innerHTML = '<li style="color:var(--faint)">No evaluations yet - try the simulator.</li>'; return; }
-    $('#log').innerHTML = localLog.slice().reverse().map(e=>{
-      const ok = e.decision === 'allowed';
-      return `<li><span class="when">${e.when}</span><span class="d ${ok?'a':'r'}">${ok?'ALLOWED':'REJECTED'}</span><span class="what">${e.what}</span></li>`;
-    }).join('');
+    $('#log').innerHTML = '<li style="color:var(--faint)">Live backend unreachable - audit log unavailable.</li>';
   }
 }
 
@@ -233,18 +211,16 @@ $('#go').addEventListener('click', async () => {
   v.className = 'verdict'; v.innerHTML = '<span style="color:var(--faint)">evaluating...</span>'; v.classList.add('show');
   let d;
   try{
-    if (!apiOnline) throw new Error('offline');
     d = await (await fetch(API_BASE+'/api/evaluate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({destination,amountSol})})).json();
   } catch(e) {
-    d = evaluateLocal(FALLBACK_POLICY, {destination, amountSol});
-    if (d.allow) localStorage.setItem('tl_spent', String(parseFloat(localStorage.getItem('tl_spent')||'0') + amountSol));
-    const t = new Date();
-    localLog.push({when: t.toTimeString().slice(0,8), decision: d.allow?'allowed':'rejected', what: `${amountSol} SOL -> ${short(destination)}${d.reasons.length?' - '+d.reasons[0]:''}`});
+    v.className = 'verdict reject show';
+    v.innerHTML = '<div class="t">Backend unreachable</div><div class="note">No verdict shown - the live policy engine could not be reached. This page never falls back to simulated results.</div>';
+    return;
   }
   {
     if(d.allow){
       v.className = 'verdict allow show';
-      v.innerHTML = `<div class="t">&#10003; Allowed</div><div class="note">Passes every rule. In the live flow the gatekeeper would now sign its approval in the 2-of-2 multisig.</div>`;
+      v.innerHTML = `<div class="t">&#10003; Allowed (policy check only)</div><div class="note">Passes every rule. This page evaluates - it never moves funds. Real execution: the hosted backend creates the Squads proposal (agent signs 1 of 2), then the owner-run gatekeeper approves (2 of 2) before anything moves.</div>`;
     } else {
       v.className = 'verdict reject show';
       v.innerHTML = `<div class="t">&#10007; Rejected</div><ul>${d.reasons.map(r=>`<li>${r}</li>`).join('')}</ul><div class="note">No signature. The transaction can never execute - the agent holds only one of two required keys.</div>`;
