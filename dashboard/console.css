@@ -191,3 +191,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-col
 .timeline .pay-bad { border-left: 3px solid var(--bad); padding-left: 10px; }
 .callout { padding: 12px 14px; border-radius: var(--r); margin-bottom: 12px; }
 .callout.bad { background: var(--bad-bg); } .callout.ok { background: var(--ok-bg); }
+.agent-cta { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-decoration: none; color: inherit; transition: transform .15s, border-color .15s; }
+.agent-cta:hover { transform: translateY(-2px); border-color: var(--ink); }
+.agent-cta h2 { font-size: 18px; margin: 8px 0 4px; }
+.agent-cta p { margin: 0; }
+@media (max-width: 560px) { .agent-cta { flex-direction: column; align-items: stretch; } }
