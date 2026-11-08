@@ -4,7 +4,7 @@
   "description": "The Permission Layer for AI Agents - MLH Solana Hackathon 2026",
   "scripts": {
     "start": "node src/api/server.js",
-    "test": "node scripts/test-policy.mjs && node scripts/test-api.mjs",
+    "test": "node scripts/test-policy.mjs && node scripts/test-api.mjs && node scripts/test-agent-loop.mjs",
     "demo:setup": "node scripts/setup-demo.mjs",
     "demo:agent": "node scripts/demo-agent.mjs",
     "spike": "node scripts/spike.mjs"

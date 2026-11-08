@@ -31,3 +31,23 @@ export async function groqChat(env, options, fetcher = fetch) {
   }
   return {response:content,model:data.model,usage:{prompt_tokens:data.usage?.prompt_tokens,completion_tokens:data.usage?.completion_tokens}};
 }
+
+// One step of the bounded agent loop (cloudflare/agent-loop.js): chat with tools.
+// Same guards as groqChat: key + Free-tier flag required, single attempt, timeout,
+// bounded input and output. Returns the assistant message (content and tool_calls).
+export async function groqToolStep(env, messages, tools, fetcher = fetch) {
+  if (!env.GROQ_API_KEY) throw new Error('Groq API key not configured');
+  if (env.GROQ_FREE_TIER_VERIFIED !== 'true') throw new Error('Groq Free tier not verified; inference disabled');
+  if (!Array.isArray(messages) || messages.length < 2 || messages.length > 40) throw new Error('Invalid agent message list');
+  if (JSON.stringify(messages).length > 24000) throw new Error('Agent context too long');
+  const payload = { model: GROQ_MODEL, messages, tools, tool_choice: 'auto', parallel_tool_calls: false, max_completion_tokens: 512, reasoning_effort: 'low', temperature: 0, stream: false };
+  let res;
+  try { res = await fetcher(URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.GROQ_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(25000) }); }
+  catch { throw new Error('Groq request failed or timed out; no automatic retry'); }
+  if (!res.ok) throw new Error('Groq HTTP ' + res.status + '; no automatic retry');
+  const data = await res.json();
+  const msg = data?.choices?.[0]?.message;
+  if (!msg || !['stop', 'tool_calls'].includes(data.choices[0].finish_reason)) throw new Error('Groq returned incomplete output');
+  const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls.slice(0, 3).map(c => ({ id: String(c.id).slice(0, 64), type: 'function', function: { name: String(c.function?.name || '').slice(0, 40), arguments: String(c.function?.arguments || '{}').slice(0, 2000) } })) : [];
+  return { content: typeof msg.content === 'string' ? msg.content.slice(0, 2000) : '', tool_calls: calls };
+}

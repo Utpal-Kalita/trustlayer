@@ -1,4 +1,5 @@
-import { groqChat, GROQ_MODEL } from './groq.js';
+import { groqChat, groqToolStep, GROQ_MODEL } from './groq.js';
+import { runAgent } from './agent-loop.js';
 import { Connection, Keypair, PublicKey, SystemProgram, TransactionMessage } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
 // TrustLayer API — Cloudflare Worker (read-only parity + durable gate prototype)
@@ -543,6 +544,60 @@ export default {
       if (url.pathname === '/api/gate/bootstrap' && req.method === 'POST') {
         const s = await gate().fetch(new Request('https://do/bootstrap', { method: 'POST' }));
         return new Response(s.body, { status: s.status, headers: { ...CORS, 'content-type': 'application/json' } });
+      }
+      if (url.pathname === '/api/agent/run' && req.method === 'POST') {
+        // Autonomous agent run (cloudflare/agent-loop.js): the model plans over up to
+        // 6 tool-calling steps (read vendors, check budget, request payment, finish).
+        // Every payment request is judged by the deterministic engine in the DO.
+        // Public lane: dry-run verdicts only, each model step costs one unit of the
+        // durable daily quota. Operator lane (x-trustlayer-key) with execute:true:
+        // an APPROVED payment becomes a real Squads proposal with the agent's vote
+        // 1 of 2 - funds still need the owner-side gatekeeper's vote 2 of 2.
+        const H = { ...CORS, 'content-type': 'application/json' };
+        const isOperator = env.API_KEY && req.headers.get('x-trustlayer-key') === env.API_KEY;
+        const body = await req.json().catch(() => null);
+        const task = String((body && body.task) || '').slice(0, 500).trim();
+        const scenario = body && body.scenario === 'injected' ? 'injected' : 'clean';
+        const execute = !!(isOperator && body && body.execute === true);
+        if (!task) return Response.json({ ok: false, error: 'task (string) required' }, { status: 400, headers: H });
+        const ip = req.headers.get('cf-connecting-ip') || 'unknown';
+        globalThis.__aiRunRate = globalThis.__aiRunRate || {};
+        const now = Date.now();
+        const rec = (globalThis.__aiRunRate[ip] || []).filter(t => now - t < 3600000);
+        if (!isOperator && rec.length >= 10) return Response.json({ ok: false, error: 'rate limit: 10 agent runs per hour per IP' }, { status: 429, headers: H });
+        rec.push(now); globalThis.__aiRunRate[ip] = rec;
+        const policy = JSON.parse(env.POLICY_JSON);
+        let quotaHit = false;
+        const out = await runAgent({
+          task, policy, scenario,
+          chat: (messages, tools) => groqToolStep(env, messages, tools),
+          allowStep: async () => {
+            if (isOperator) return true;
+            const q = await gate().fetch(new Request('https://do/agent-quota', { method: 'POST' }));
+            const qj = await q.json().catch(() => null);
+            if (!qj || qj.allowed !== true) { quotaHit = true; return false; }
+            return true;
+          },
+          budget: async () => {
+            const st = await (await gate().fetch(new Request('https://do/state'))).json().catch(() => ({}));
+            const inflight = Object.values(st.inflight || {}).reduce((t, v) => t + (v.lamports || 0), 0);
+            return { executedLamports: st.executedLamports || 0, inflightLamports: inflight };
+          },
+          decide: async (tx) => {
+            if (!execute) {
+              const r = await gate().fetch(new Request('https://do/evaluate', { method: 'POST', body: JSON.stringify(tx) }));
+              const v = await r.json().catch(() => null);
+              return v && typeof v.allow === 'boolean' ? v : { allow: false, reasons: ['policy engine unavailable (fail closed)'] };
+            }
+            const authId = 'agent-' + Date.now().toString(36);
+            const r = await gate().fetch(new Request('https://do/execute', { method: 'POST', body: JSON.stringify({ ...tx, authId }) }));
+            const v = await r.json().catch(() => ({}));
+            if (v.ok) return { allow: true, reasons: [], proposal: { transactionIndex: v.transactionIndex, memo: v.memo, authId, note: 'agent approved 1 of 2; awaiting owner-side gatekeeper' } };
+            return { allow: false, reasons: v.reasons || [v.error || 'refused'] };
+          },
+        });
+        return Response.json({ ok: true, model: GROQ_MODEL, task, mode: execute ? 'execute (agent vote 1 of 2)' : 'dry-run', quotaHit, ...out,
+          note: 'The model plans and calls tools; every payment is judged by the deterministic policy engine. The model cannot approve, sign or override.' }, { headers: H });
       }
       if (url.pathname === '/api/agent' && req.method === 'POST') {
         const isOperator = env.API_KEY && req.headers.get('x-trustlayer-key') === env.API_KEY;

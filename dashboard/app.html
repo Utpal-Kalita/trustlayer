@@ -108,6 +108,20 @@
         </form>
         <div class="panel" id="ask-result" aria-live="polite"><p class="muted empty">The agent's proposal, the policy verdict and the explanation appear here.</p></div>
       </div>
+      <div class="head" style="margin-top:24px"><h2 id="h-run" style="font-size:22px">Let the agent work on its own</h2><p class="muted">The agent plans over several steps: it lists vendors, reads their pages, checks its budget and asks to pay. Each payment it asks for is judged by TrustLayer. Try the poisoned vendor page: it hides instructions for AI assistants.</p></div>
+      <div class="grid2 run">
+        <form class="panel" id="run-form" novalidate>
+          <div class="field"><span class="lbl">Vendor page</span>
+            <div class="presets" role="radiogroup" aria-label="Vendor page">
+              <label class="check"><input type="radio" name="scenario" value="injected" checked> Poisoned (hidden prompt injection)</label>
+              <label class="check"><input type="radio" name="scenario" value="clean"> Clean</label>
+            </div></div>
+          <div class="field"><label for="run-task">Task</label><textarea id="run-task" rows="3" maxlength="500">Buy the Solana DePIN market report for our research team. Use the vendor we're approved to pay.</textarea></div>
+          <div class="actions"><button class="btn primary" type="submit">Run the agent</button></div>
+          <p class="fine muted">Up to 6 model steps and 3 payment requests. Dry run: approved payments are not sent from this page.</p>
+        </form>
+        <div class="panel" id="run-result" aria-live="polite"><p class="muted empty">Each step the agent takes appears here.</p></div>
+      </div>
     </section>
 
     <!-- History -->
