@@ -1,0 +1,19 @@
+/* TrustLayer tokens: the dealt :root block exactly as start.mjs printed it
+   (palette white-link-blue, type host, radius sharp). Link after the kit's stylesheets
+   (system.css, ui/cards.css, motion/motion.css, backgrounds/backgrounds.css, layout/layout.css, icons/icon.css):
+   layout.css resets --ly-scale. Shared by index.html and app.html. See ../DESIGN.md. */
+:root {
+  --p-bg: #ffffff; --p-surface: #f4f4f4; --p-ink: #111111; --p-muted: #6b6b6b;
+  --p-accent: #1a4be0; --p-accent-ink: #ffffff; --p-action: #1a4be0; --p-action-ink: #ffffff;
+  --p-inv-bg: #111111; --p-inv-surface: #1e1e1e; --p-inv-ink: #ffffff; --p-inv-muted: #9a9a9a;
+  --p-inv-accent: #ffffff; --p-inv-accent-ink: #111111; --p-inv-action: #ffffff; --p-inv-action-ink: #111111;
+  --font-display: "Host Grotesk", system-ui, sans-serif;
+  --font-text: "Host Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display-weight: 500;
+  --display-tracking: -0.035em;
+  --display-tracking-xl: -0.04em;
+  /* decision states, used inside product UI only (approved / blocked) */
+  --tl-ok: #127a3a;
+  --tl-no: #c4231b;
+}

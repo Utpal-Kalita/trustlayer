@@ -1,0 +1,86 @@
+/* landing page CSS: only what sits inside a visual (the hero collage pieces, the app frame, the decision
+   pane, the API rows), as the skill's recipes allow. Tokens come from trustlayer.css. */
+
+/* ---------- shared decision UI (hero pieces and the app frame's open pane) ---------- */
+.tl-st { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1 var(--font-text); padding: 5px 8px; border-radius: 4px; white-space: nowrap; }
+.tl-st--ok { color: var(--tl-ok); background: rgb(18 122 58 / .09); }
+.tl-st--no { color: var(--tl-no); background: rgb(196 35 27 / .08); }
+.tl-mono { font-family: var(--font-mono); font-size: 13px; }
+.tl-ico { width: 16px; height: 16px; flex: none; }
+
+/* ---------- hero collage pieces ---------- */
+.ly-collage .pc { background: #fff; color: var(--ink); padding: 20px 22px; display: grid; align-content: start; gap: 12px; font: 400 15px/1.4 var(--font-text); }
+.ly-collage .pc--mono { background: #f4f4f4; }
+.pc__top { display: flex; align-items: center; gap: 8px; }
+.pc__top .tl-st { margin-left: auto; }
+.pc__lbl { color: var(--muted); font-size: 13px; }
+.pc__amt { font: 500 28px/1.1 var(--font-display); letter-spacing: -0.02em; }
+.pc__row { display: flex; align-items: flex-start; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pc__row b { font-weight: 500; }
+.pc__row span { color: var(--muted); font-size: 13px; }
+.pc__row .tl-ico { margin-top: 2px; }
+.pc__why { color: var(--tl-no); font-size: 14px; line-height: 1.45; }
+.pc dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
+.pc dt { color: var(--muted); font-size: 13px; }
+.pc dd { margin: 0; text-align: right; font-weight: 500; white-space: nowrap; }
+.ly-collage .pc--ink { background: #111111; color: #fff; }
+.pc--ink .pc__lbl { color: #b5b5b5; }
+.pc--ink .pc__row { border-color: rgb(255 255 255 / .14); }
+.pc--ink .pc__row span { color: #c4c4c4; }
+
+/* ---------- app frame (sections-library.md app-frame, its page CSS) ---------- */
+.app.ui { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); margin-top: var(--s-7); background: var(--u-bg); border: 1px solid var(--u-border); border-radius: var(--u-r); box-shadow: var(--u-shadow); }
+.app > .app__pane { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.app > .app__pane + .app__pane { border-left: 1px solid var(--u-line); }
+.app > .app__pane > .ui-panel { width: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.app > .app__pane::after { content: ""; position: absolute; inset: auto 0 0 0; height: 64px; background: linear-gradient(transparent, var(--u-bg)); pointer-events: none; }
+@media (min-width: 1024px) and (max-width: 1279px) { .app.ui { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); } }
+@media (max-width: 1023px) {
+  .app.ui { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .app > .app__pane--list { max-height: 252px; }
+  .app > .app__pane--list::after { display: none; }
+  .app .ui-win__side { display: none; }
+  .app .ui-win__body { grid-template-columns: minmax(0, 1fr); }
+  .app > .app__pane + .app__pane { border-left: 0; border-top: 1px solid var(--u-line); }
+}
+@media (max-width: 639px) {
+  .app.ui { grid-template-rows: minmax(0, 1fr); }
+  .app > .app__pane--list { display: none; }
+  .app > .app__pane + .app__pane { border-top: 0; }
+}
+.app .ui-win__st.is-no { color: var(--tl-no); }
+
+/* the open decision: the checklist fragment as the gatekeeper's checks, each with its reason */
+.app .ui-checks { width: 100%; }
+.app .ui-checks__head { height: auto; padding: 16px 20px 12px; gap: 12px; flex-wrap: wrap; }
+.app .ui-checks__head .tl-mono { color: var(--u-muted); }
+.app .ui-checks__bar { margin: 0 20px 4px; }
+.app .ui-check { height: auto; align-items: flex-start; padding: 9px 20px; border-top: 1px solid var(--u-line); }
+.app .ui-check__box { margin-top: 1px; }
+.app .ui-check__label { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; width: 100%; }
+.app .ui-check__label::after { display: none; }
+.app .ui-check.is-done .ui-check__label { color: var(--u-ink); }
+.app .ui-check.is-done .ui-check__box { background: var(--tl-ok); }
+.app .ui-check__label b { font-weight: 500; }
+.app .ui-check__label span { color: var(--u-muted); }
+@media (max-width: 639px) { .app .ui-check__label { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* ---------- API rows ---------- */
+.api-rows { list-style: none; margin: 0; padding: 0; }
+.api-rows li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.api-rows code { font: 500 14px/1.5 var(--font-mono); }
+.api-rows .m { color: var(--muted); font: 500 13px/1.6 var(--font-mono); }
+.api-rows p { grid-column: 2; margin: 0; font-size: 16px; line-height: 1.5; }
+#api .panel { --p-h: 100%; }
+.ui-code .ok { color: var(--tl-ok); }
+
+/* ---------- statement (liquid-type) ---------- */
+.mo-lt__type { font-size: clamp(48px, 8.2vw, 128px); line-height: 1; letter-spacing: var(--display-tracking-xl); max-width: 14ch; }
+
+/* ---------- statement: the two keys, each alone ---------- */
+.keys { margin-top: var(--s-8); }
+.ui-panel.key { display: grid; gap: 8px; padding: 32px; font: 400 14px/1.4 var(--font-text); color: var(--ink); }
+.key .pc__amt { color: var(--tl-no); }
+.key .tl-mono { color: var(--muted); }
+#api .frame--split { --ratio: 96%; }
+@media (max-width: 639px) { .ui-panel.key { padding: 24px; } .keys { margin-top: var(--s-6); } }
