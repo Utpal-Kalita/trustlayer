@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 8787;
 // resetting. Stateful execution runs locally (scripts/spike.mjs or this
 // server with durable disk).
 const READ_ONLY = process.env.TRUSTLAYER_READ_ONLY === '1';
+const BOOTED_AT = new Date().toISOString();
 const rpcHost = new URL(process.env.SOLANA_RPC || 'https://api.devnet.solana.com').host;
 let { policy } = loadPolicy();
 const audit = new AuditLog('data/audit.log', { cluster: rpcHost, policyVersion: policy.version ?? 0 });
@@ -50,7 +51,7 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
   if (req.method === 'GET' && url.pathname === '/api/health')
-    return json(res, 200, { ok: true, service: 'trustlayer-api', time: new Date().toISOString() });
+    return json(res, 200, { ok: true, service: 'trustlayer-api', time: new Date().toISOString(), readOnly: READ_ONLY });
   if (req.method === 'GET' && url.pathname === '/api/policies')
     return json(res, 200, policy);
   if (req.method === 'PUT' && url.pathname === '/api/policies') {
@@ -72,7 +73,12 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, policy });
   }
   if (req.method === 'GET' && url.pathname === '/api/audit')
-    return json(res, 200, { entries: audit.recent(100) });
+    return json(res, 200, {
+      entries: audit.recent(100),
+      scope: audit.scope,
+      instanceBootedAt: BOOTED_AT,
+      note: 'instance-local history only: entries since this process booted, on this host. Ephemeral hosts reset on redeploy/sleep; the durable execution record is docs/DEVNET-FUNDING.md plus the on-chain transactions.',
+    });
   // Full on-chain flow: evaluate -> 2-of-2 approval -> execute. Needs SOLANA_RPC
   // reachable (local validator or funded devnet) and .env keypairs present.
   if (req.method === 'POST' && url.pathname === '/api/propose') {
@@ -97,7 +103,7 @@ const server = http.createServer(async (req, res) => {
     const tx = await readBody(req);
     const decision = evaluate(policy, tx, audit);
     audit.record({ kind: 'evaluate', ...tx, decision: decision.allow ? 'allowed' : 'rejected', reasons: decision.reasons });
-    return json(res, 200, decision);
+    return json(res, 200, { ...decision, dryRun: true, signing: READ_ONLY ? 'disabled-on-this-host' : 'enabled' });
   }
   // static dashboard
   const rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
