@@ -13,14 +13,26 @@ export function loadPolicy(file = 'policies/default.json') {
 }
 
 export class AuditLog {
-  constructor(file = 'data/audit.log') {
+  // scope: {cluster, policyVersion} — when set, every recorded entry is
+  // stamped with it and spend/replay accounting counts ONLY entries from the
+  // same scope. One policy version's budgets are never polluted by executions
+  // on another cluster (local validator vs devnet) or under another policy
+  // version. The full history stays in the log; scoping changes what counts,
+  // never what is preserved.
+  constructor(file = 'data/audit.log', scope = null) {
     this.file = path.resolve(process.cwd(), file);
+    this.scope = scope;
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
   }
   record(entry) {
-    const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+    const stamp = this.scope ? { cluster: this.scope.cluster, policyVersion: this.scope.policyVersion } : {};
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...stamp, ...entry });
     fs.appendFileSync(this.file, line + '\n');
     return line;
+  }
+  _inScope(e) {
+    if (!this.scope) return true;
+    return e.cluster === this.scope.cluster && e.policyVersion === this.scope.policyVersion;
   }
   recent(limit = 100) {
     if (!fs.existsSync(this.file)) return [];
@@ -31,7 +43,7 @@ export class AuditLog {
   spentTodayLamports(windowStart) {
     if (!fs.existsSync(this.file)) return 0;
     return this.recent(10000)
-      .filter(e => e.decision === 'allowed' && e.executed === true && new Date(e.ts).getTime() >= windowStart)
+      .filter(e => this._inScope(e) && e.decision === 'allowed' && e.executed === true && new Date(e.ts).getTime() >= windowStart)
       .reduce((s, e) => s + Math.round((e.amountSol || 0) * 1e9), 0);
   }
   // Sum of executed spends plus held (not yet settled) reservations.
@@ -42,6 +54,7 @@ export class AuditLog {
     const ents = this.recent(10000);
     const state = new Map();
     for (const e of ents) {
+      if (!this._inScope(e)) continue;
       if (!e.id) { if (e.decision === 'allowed' && e.executed === true) state.set(Symbol(), { amount: e.amountSol || 0, status: 'executed' }); continue; }
       const cur = state.get(e.id) || { amount: e.amountSol || 0, status: 'none' };
       if (e.amountSol != null) cur.amount = e.amountSol;
@@ -61,7 +74,7 @@ export class AuditLog {
     const n = String(nonce);
     let s = 'free';
     for (const e of this.recent(10000)) {
-      if (e.nonce !== n) continue;
+      if (!this._inScope(e) || e.nonce !== n) continue;
       if (e.released) s = 'free';
       else if (e.executed === true) return 'consumed';
       else if (e.reserved) s = 'inflight';
