@@ -215,11 +215,12 @@ export class PolicyGate {
       });
     }
     // Durable global daily cap for the PUBLIC, non-executing AI interpretation lane.
-    // 100 interpretations/day = at most 200 model calls/day, well under the Groq
-    // free plan's 1K requests/day for openai/gpt-oss-20b. Single-writer DO = exact.
+    // 300 units/day = at most 300 model calls/day (one unit per model call), under
+    // a third of the Groq free plan's 1K requests/day for openai/gpt-oss-20b.
+    // Single-writer DO = exact.
     if (url.pathname === '/agent-quota' && req.method === 'POST') {
       return this.state.blockConcurrencyWhile(async () => {
-        const CAP = 100;
+        const CAP = 300;
         const day = new Date().toISOString().slice(0, 10);
         if (this.cache.aiQuotaDay !== day) { this.cache.aiQuotaDay = day; this.cache.aiQuotaUsed = 0; }
         const allowed = (this.cache.aiQuotaUsed || 0) < CAP;
@@ -547,7 +548,7 @@ export default {
       }
       if (url.pathname === '/api/agent/run' && req.method === 'POST') {
         // Autonomous agent run (cloudflare/agent-loop.js): the model plans over up to
-        // 6 tool-calling steps (read vendors, check budget, request payment, finish).
+        // 8 tool-calling steps (read vendors, check budget, request payment, finish).
         // Every payment request is judged by the deterministic engine in the DO.
         // Public lane: dry-run verdicts only, each model step costs one unit of the
         // durable daily quota. Operator lane (x-trustlayer-key) with execute:true:
@@ -569,7 +570,7 @@ export default {
         const policy = JSON.parse(env.POLICY_JSON);
         let quotaHit = false;
         const out = await runAgent({
-          task, policy, scenario,
+          task, policy, scenario, dryRun: !execute,
           chat: (messages, tools) => groqToolStep(env, messages, tools),
           allowStep: async () => {
             if (isOperator) return true;
