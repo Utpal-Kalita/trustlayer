@@ -241,7 +241,7 @@ function renderRun(d) {
     const res = t.result.page ? t.result.page : JSON.stringify(t.result, null, 2);
     return `<li><span class="n">${t.step}</span><div class="body"><b>${esc(TOOL_LABEL[t.tool] || t.tool)}</b>${t.args && Object.keys(t.args).length ? `<span class="call">${esc(JSON.stringify(t.args))}</span>` : ''}<details><summary>Result</summary><pre class="code">${esc(res)}</pre></details></div></li>`;
   }).join('');
-  const stop = { finished: '', 'step-limit': 'Stopped at the step limit.', quota: 'Stopped: daily public AI quota reached.', 'model-error': 'Stopped: the model call failed (no retry).', 'no-tool-call': '' }[d.stopReason] || '';
+  const stop = { finished: '', 'step-limit': 'Stopped at the step limit.', quota: 'Stopped: daily public AI quota reached. The run may be incomplete.', 'model-error': 'Stopped: the model call failed (no retry).', 'no-tool-call': '' }[d.stopReason] || '';
   $('#run-result').innerHTML = `${banner}${head}<ol class="timeline">${items}</ol>
     ${stop ? `<p class="small muted">${esc(stop)}</p>` : ''}
     <p class="small muted">Model: ${esc(d.model)} · ${esc(d.mode)} · ${d.payments.length} payment request${d.payments.length === 1 ? '' : 's'}, ${d.payments.filter(p => p.verdict === 'APPROVED').length} approved. Verdicts come from the policy engine, never the model.</p>`;
