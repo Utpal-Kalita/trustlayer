@@ -162,6 +162,7 @@ Public devnet proof (2026-11-08, `node scripts/spike.mjs` against `api.devnet.so
 
 - Multisig `BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC`, vault `93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe` ([explorer](https://explorer.solana.com/address/BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC?cluster=devnet))
 - **Allowed payment** executed: policy ALLOW -> agent approve -> gatekeeper approve -> gatekeeper execute ([tx](https://explorer.solana.com/tx/3NxbjhoT1QDPGTfFDeTQBo2gMsNenkMa8LS6qWYLeLF5RToGV7fSWquvWGvse6MewnRmDMS7wMARzc7y3JVNXQmE?cluster=devnet)). Verified after: vendor 0.01 SOL, vault 0.19 SOL.
+- **AI-initiated payments** executed end to end (Groq `openai/gpt-oss-20b` interpretation -> policy ALLOW -> hosted Squads proposal -> gatekeeper chain-verified 2-of-2 approval -> execution): [tx 1](https://explorer.solana.com/tx/65tdVyX4umGJitZjqsAGBdrcE71S4zkWACAV4gp6n9ZRgYrvuHDMq5cAdGeY9ixetakyVmasGnaivFiM4DwehhxW?cluster=devnet), [tx 2](https://explorer.solana.com/tx/3LsgoE3LUR1mxaGARTFEH6W1GtcShSBaMP7j2Mbu2xyNEp9gk82ZCmVQzhmomU5UC2XNUpCSf1rcidrMwSv1FoP1?cluster=devnet).
 - **Blocked attack** rejected by the policy engine (blocked destination); agent-alone execute failed on-chain (Squads 0x1774), double-vote failed, gatekeeper execute on the unapproved proposal failed (0x1778). Attacker balance stayed 0.
 - **Non-custodial**: the gatekeeper alone (1 of 2 votes) cannot move funds (0x1778); vault unchanged.
 
