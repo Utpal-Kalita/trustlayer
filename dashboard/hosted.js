@@ -85,7 +85,7 @@ function renderOverview() {
 function securityEvents() {
   const out = [];
   for (const e of H.audit) {
-    if (e.kind === 'evaluate' && e.decision === 'rejected')
+    if ((e.kind === 'evaluate' || e.kind === 'ai-interpret') && e.decision === 'rejected')
       for (const r of e.reasons || []) out.push({ ts: e.ts, type: /expired/i.test(r) ? 'Expired permission' : /per-transaction|invalid amount/i.test(r) ? 'Transaction limit' : /budget/i.test(r) ? 'Spending limit' : /destination/i.test(r) ? 'Unauthorized recipient' : /action/i.test(r) ? 'Disallowed action' : /program/i.test(r) ? 'Disallowed program' : /ledger/i.test(r) ? 'Ledger unavailable' : 'Policy violation', text: r });
     if (/failed/.test(e.kind)) out.push({ ts: e.ts, type: e.kind === 'propose-failed' ? 'Proposal failed' : 'Execution failed', text: String(e.error || '').slice(0, 200) });
     if (e.kind === 'reservation-cancelled') out.push({ ts: e.ts, type: 'Reservation released', text: `${e.authId}${e.txIndex != null ? ` (proposal #${e.txIndex})` : ''}: ${e.note || ''}`, quiet: true });
@@ -131,13 +131,13 @@ function renderProposals() {
 }
 
 function renderHistory() {
-  const rows = H.audit.slice().reverse().filter(e => ['evaluate', 'proposed', 'execute-failed', 'propose-failed', 'reservation-cancelled'].includes(e.kind))
+  const rows = H.audit.slice().reverse().filter(e => ['evaluate', 'ai-interpret', 'proposed', 'execute-failed', 'propose-failed', 'reservation-cancelled'].includes(e.kind))
     .filter(e => H.filter === 'all' || (H.filter === 'ok' ? (e.decision === 'allowed' || e.kind === 'proposed') : (e.decision === 'rejected' || /failed/.test(e.kind))));
-  const status = (e) => e.kind === 'proposed' ? '<span class="pill warn">Proposed 1 of 2</span>' : e.kind === 'evaluate' ? `<span class="pill ${e.decision === 'allowed' ? 'ok' : 'bad'}">${e.decision === 'allowed' ? 'Approved' : 'Blocked'}</span>` : /failed/.test(e.kind) ? '<span class="pill bad">Failed</span>' : '<span class="pill">Released</span>';
+  const status = (e) => e.kind === 'ai-interpret' ? `<span class="pill ${e.decision === 'allowed' ? 'ok' : e.decision === 'rejected' ? 'bad' : ''}">${e.decision === 'allowed' ? 'AI: approved' : e.decision === 'rejected' ? 'AI: blocked' : 'AI: not understood'}</span>` : e.kind === 'proposed' ? '<span class="pill warn">Proposed 1 of 2</span>' : e.kind === 'evaluate' ? `<span class="pill ${e.decision === 'allowed' ? 'ok' : 'bad'}">${e.decision === 'allowed' ? 'Approved' : 'Blocked'}</span>` : /failed/.test(e.kind) ? '<span class="pill bad">Failed</span>' : '<span class="pill">Released</span>';
   $('#tx-table tbody').innerHTML = rows.map(e => `<tr>
-    <td class="small">${esc(ago(e.ts))}</td><td>${e.kind === 'evaluate' ? 'Evaluation' : 'Hosted agent'}</td><td>${e.destination ? who(e.destination) : '—'}</td>
-    <td class="num mono">${e.amountSol != null ? esc(solN(e.amountSol)) : '—'}</td><td>${status(e)}</td>
-    <td class="reason">${esc((e.reasons || []).join(' ') || (e.kind === 'proposed' ? `Squads proposal #${e.txIndex} · ${e.memo || ''}` : e.error || e.note || 'All policy checks passed.'))}</td>
+    <td class="small">${esc(ago(e.ts))}</td><td>${e.kind === 'evaluate' ? 'Evaluation' : e.kind === 'ai-interpret' ? 'AI agent' : 'Hosted agent'}</td><td>${(e.destination || e.proposal?.destination) ? who(e.destination || e.proposal.destination) : '—'}</td>
+    <td class="num mono">${(e.amountSol ?? e.proposal?.amountSol) != null ? esc(solN(e.amountSol ?? e.proposal.amountSol)) : '—'}</td><td>${status(e)}</td>
+    <td class="reason">${esc((e.reasons || []).join(' ') || (e.kind === 'ai-interpret' ? `Task: "${e.task || ''}"${e.error ? ' · ' + e.error : ''}` : e.kind === 'proposed' ? `Squads proposal #${e.txIndex} · ${e.memo || ''}` : e.error || e.note || 'All policy checks passed.'))}</td>
     <td>${e.sigs ? Object.values(e.sigs).slice(-1).map(s => `<a class="link mono" href="${explorer('tx', s)}" target="_blank" rel="noopener">${esc(short(s))}</a>`).join('') : '<span class="muted">—</span>'}</td></tr>`).join('')
     || '<tr><td colspan="7" class="muted empty">Nothing here yet.</td></tr>';
 }
@@ -177,6 +177,46 @@ function setupPropose() {
   $$('[data-filter]').forEach(b => b.onclick = () => { H.filter = b.dataset.filter; $$('[data-filter]').forEach(x => x.classList.toggle('on', x === b)); renderHistory(); });
 }
 
+// ------------------------------------------------------------------ ask the AI agent
+// POST /api/agent: the LLM interprets the task, the deterministic engine
+// decides, the LLM explains. No key is sent from the browser: if the worker
+// keeps the route operator-only, the page says so instead of working around it.
+function setupAsk() {
+  $$('[data-task]').forEach(b => b.onclick = () => { $('#ask-task').value = b.dataset.task; });
+  $('#ask-note').textContent = "Uses the live worker's /api/agent. The model only reads your task; the payment is judged by the same rules as every other proposal.";
+  $('#ask-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const task = $('#ask-task').value.trim();
+    if (!task) return;
+    const btn = $('#ask-form button[type=submit]'); btn.disabled = true;
+    $('#ask-result').innerHTML = '<p class="muted empty">The agent is reading the task, then the policy engine decides…</p>';
+    try {
+      const r = await fetch(WORKER + '/api/agent', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 401) {
+        $('#ask-result').innerHTML = `<p class="err">The live agent is open to the operator only right now.</p><p class="muted small">The operator can run the same flow from a terminal: <code>node scripts/ai-agent.mjs "${esc(task.slice(0, 80))}${task.length > 80 ? '…' : ''}"</code></p>`;
+        return;
+      }
+      if (r.status === 429) { $('#ask-result').innerHTML = `<p class="err">${esc(d.error || 'Rate limit reached. Try again later.')}</p>`; return; }
+      if (!d.ok) {
+        $('#ask-result').innerHTML = `<div class="verdict bad"><span class="big">NOT A PAYMENT</span><span>${esc(d.error || 'The agent could not turn this task into a payment.')}</span></div><p class="small muted">Stage: ${esc(d.stage || '—')} · ${esc(d.model || '')}. Nothing was proposed.</p>`;
+        return;
+      }
+      const v = d.verdict || { allow: false, reasons: [] };
+      const amount = Number(d.proposal.amountSol);
+      $('#ask-result').innerHTML = `
+        <div class="ai-box"><b>The agent proposed</b>${esc(solN(amount))} → ${who(d.proposal.destination)}</div>
+        <div class="verdict ${v.allow ? 'ok' : 'bad'}"><span class="big">${v.allow ? 'APPROVED' : 'BLOCKED'}</span><span>${esc(v.allow ? 'All policy checks passed.' : v.reasons[0] || '')}</span></div>
+        <p class="small muted">Decided by the deterministic policy engine, not the model.</p>
+        ${checksList(checksFor(v, amount, d.proposal.destination))}
+        ${d.explanation ? `<div class="ai-box"><b>The agent explains</b>${esc(d.explanation)}</div>` : ''}
+        <p class="small muted">Model: ${esc(d.model || '—')}. ${v.allow ? 'Approval here moves nothing: the hosted agent still has to propose (vote 1 of 2) and the owner-side gatekeeper verifies and casts vote 2 of 2.' : 'No proposal exists for this payment and none can be signed.'}</p>`;
+      load().catch(() => {});
+    } catch (err) { $('#ask-result').innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+    finally { btn.disabled = false; }
+  });
+}
+
 async function load() {
   const [health, policy, audit] = await Promise.all([get('/api/health'), get('/api/policies'), get('/api/audit')]);
   // /api/state carries chain-derived spend and open proposals. The deployed
@@ -195,6 +235,6 @@ export async function bootHosted() {
   $('#btn-signout').hidden = true;
   $('[data-tab="agents"]').textContent = 'Policy';
   $('#h-agents').textContent = 'Policy and proposals';
-  try { await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
+  try { setupAsk(); await load(); setupPropose(); window.dispatchEvent(new Event('hashchange')); } catch (err) { $('#stats').innerHTML = `<p class="err">Live backend unreachable: ${esc(err.message)}</p>`; }
   setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 10000);
 }

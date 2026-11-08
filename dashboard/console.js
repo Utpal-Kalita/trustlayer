@@ -55,7 +55,7 @@ $('#btn-signout').onclick = signOut;
 // ------------------------------------------------------------- tabs
 function showTab() {
   const id = (location.hash || '#overview').slice(1);
-  const name = ['overview', 'agents', 'propose', 'history', 'security'].includes(id) ? id : 'overview';
+  const name = ['overview', 'agents', 'ask', 'propose', 'history', 'security'].includes(id) ? id : 'overview';
   $$('.view').forEach(v => v.hidden = v.id !== `view-${name}`);
   $$('[data-tab]').forEach(a => a.setAttribute('aria-current', a.dataset.tab === name ? 'page' : 'false'));
 }
