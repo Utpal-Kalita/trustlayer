@@ -103,3 +103,12 @@
 @media (max-width: 639px) {
   #multisig .dg .dg-cap { color: #111; font-size: 14px; line-height: 18px; background: rgba(255,255,255,.94); border-radius: 4px; padding: 2px 4px; }
 }
+
+/* On narrow phones keep the payment and key cards readable without overlap. */
+@media (max-width: 479px) {
+  .hero--triptych .ly-collage { flex: none; height: auto; min-height: 0; }
+  .ly-collage .ly-collage__set { display: grid; gap: 12px; }
+  .ly-collage .ly-collage__set.is-on { position: relative; }
+  .ly-collage .ly-piece.pc { position: relative; inset: auto !important; width: 100% !important; height: auto !important; overflow: visible; }
+  .ly-collage .pc--ink { min-height: 154px; }
+}
