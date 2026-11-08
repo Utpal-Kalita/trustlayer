@@ -195,6 +195,67 @@ export class PolicyGate {
         return Response.json({ ok: true, released: authId });
       });
     }
+    if (url.pathname === '/agent' && req.method === 'POST') {
+      return this.state.blockConcurrencyWhile(async () => {
+        // AI task interpretation (PRD AI scope): an LLM parses a natural-language
+        // task into a payment proposal; the DETERMINISTIC policy engine decides;
+        // the LLM then explains the verdict. The LLM can never approve, execute,
+        // or override - this route creates no reservation and moves no funds.
+        const ip = req.headers.get('x-client-ip') || 'unknown';
+        const now = Date.now();
+        this.cache.aiRate = this.cache.aiRate || {};
+        const rec = (this.cache.aiRate[ip] || []).filter(t => now - t < 3600000);
+        if (rec.length >= 30)
+          return Response.json({ ok: false, error: 'rate limit: 30 AI interpretations per hour per IP' }, { status: 429 });
+        rec.push(now); this.cache.aiRate[ip] = rec;
+        const ips = Object.keys(this.cache.aiRate);
+        if (ips.length > 200) this.cache.aiRate = { [ip]: rec };
+        const body = await req.json().catch(() => null);
+        const task = String((body && body.task) || '').slice(0, 500).trim();
+        if (!task) return Response.json({ ok: false, error: 'task (string) required' }, { status: 400 });
+        const policy = JSON.parse(this.env.POLICY_JSON);
+        const vendorA = (policy.allowedDestinations || [])[0] || '';
+        const NOTE = 'AI interprets the task and explains the verdict; the deterministic policy engine decides. AI output can never approve a payment. No execution or reservation happens on this route.';
+        let proposal = null, aiError = null;
+        try {
+          const r1 = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', { max_tokens: 128, messages: [
+            { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or {"error":"why"} if the task is not a clear SOL payment. Never invent an address; use only an address present in this prompt or literally given in the task.' },
+            { role: 'user', content: task },
+          ] });
+          const text = String((r1 && r1.response) || '');
+          const m = text.match(/\{[\s\S]*\}/);
+          if (m) proposal = JSON.parse(m[0]); else aiError = 'model returned no JSON';
+        } catch (e) { aiError = String(e); }
+        if (aiError || !proposal || proposal.error) {
+          const err = (proposal && proposal.error) || aiError || 'could not interpret task';
+          this.cache.audit.push({ ts: new Date().toISOString(), kind: 'ai-interpret', task: task.slice(0, 120), decision: 'unparseable', error: String(err).slice(0, 200) });
+          await this.state.storage.put('gate', this.cache);
+          return Response.json({ ok: false, stage: 'interpret', error: err, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', note: NOTE }, { status: 422 });
+        }
+        const tx = { destination: String(proposal.destination || ''), amountSol: Number(proposal.amountSol) };
+        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(tx.destination) || !Number.isFinite(tx.amountSol) || !Number.isSafeInteger(Math.round(tx.amountSol * 1e9)) || !(tx.amountSol > 0)) {
+          this.cache.audit.push({ ts: new Date().toISOString(), kind: 'ai-interpret', task: task.slice(0, 120), decision: 'invalid-proposal', proposal: tx });
+          await this.state.storage.put('gate', this.cache);
+          return Response.json({ ok: false, stage: 'validate', error: 'AI proposal failed shape validation (destination/amount)', proposal: tx, note: NOTE }, { status: 422 });
+        }
+        this.pruneExpiredInflight();
+        const bErr = await this.ensureBootstrap();
+        if (bErr) return Response.json({ ok: false, error: 'ledger unavailable: ' + bErr }, { status: 503 });
+        const r = evaluatePolicy(policy, tx, this.committed());
+        let explanation = null;
+        try {
+          const r2 = await this.env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', { max_tokens: 96, messages: [
+            { role: 'system', content: 'Explain a payment policy verdict in at most 2 short sentences. The verdict is final, made by deterministic rules - never contradict or soften it.' },
+            { role: 'user', content: 'Verdict: ' + (r.allow ? 'ALLOWED' : 'BLOCKED') + '. Reasons: ' + (r.reasons.join('; ') || 'every policy check passed') + '. Payment requested: ' + tx.amountSol + ' SOL to ' + tx.destination + '.' },
+          ] });
+          explanation = String((r2 && r2.response) || '').trim() || null;
+        } catch (e) {}
+        this.cache.audit.push({ ts: new Date().toISOString(), kind: 'ai-interpret', task: task.slice(0, 120), proposal: tx, decision: r.allow ? 'allowed' : 'rejected', reasons: r.reasons });
+        if (this.cache.audit.length > 200) this.cache.audit = this.cache.audit.slice(-200);
+        await this.state.storage.put('gate', this.cache);
+        return Response.json({ ok: true, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', task, proposal: tx, verdict: { allow: r.allow, reasons: r.reasons }, explanation, note: NOTE });
+      });
+    }
     if (url.pathname === '/state') {
       return Response.json({ ...this.cache, committedLamports: this.cache ? this.committed() : null });
     }
@@ -418,6 +479,58 @@ export default {
       if (url.pathname === '/api/gate/bootstrap' && req.method === 'POST') {
         const s = await gate().fetch(new Request('https://do/bootstrap', { method: 'POST' }));
         return new Response(s.body, { status: s.status, headers: { ...CORS, 'content-type': 'application/json' } });
+      }
+      if (url.pathname === '/api/agent' && req.method === 'POST') {
+        if (!env.API_KEY || req.headers.get('x-trustlayer-key') !== env.API_KEY) return Response.json({ok:false,error:'AI demo restricted to operator until free-plan quota verification'}, {status:401,headers:CORS});
+        // AI task interpretation (PRD Module 7), handled in the stateless worker so it
+        // always runs the latest deployed code: the LLM interprets the task, the
+        // DETERMINISTIC policy engine in the Durable Object decides, the LLM explains
+        // the verdict. The LLM can never approve, execute, or override - this route
+        // creates no reservation and moves no funds.
+        const NOTE = 'AI interprets the task and explains the verdict; the deterministic policy engine decides. AI output can never approve a payment. No execution or reservation happens on this route.';
+        const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+        const ip = req.headers.get('cf-connecting-ip') || 'unknown';
+        const now = Date.now();
+        globalThis.__aiRate = globalThis.__aiRate || {};
+        const rec = (globalThis.__aiRate[ip] || []).filter(t => now - t < 3600000);
+        if (rec.length >= 30)
+          return Response.json({ ok: false, error: 'rate limit: 30 AI interpretations per hour per IP (best-effort, per isolate)' }, { status: 429, headers: { ...CORS, 'content-type': 'application/json' } });
+        rec.push(now); globalThis.__aiRate[ip] = rec;
+        const body = await req.json().catch(() => null);
+        const task = String((body && body.task) || '').slice(0, 500).trim();
+        if (!task) return Response.json({ ok: false, error: 'task (string) required' }, { status: 400, headers: { ...CORS, 'content-type': 'application/json' } });
+        const policy = JSON.parse(env.POLICY_JSON);
+        const vendorA = (policy.allowedDestinations || [])[0] || '';
+        let proposal = null, aiError = null;
+        try {
+          const r1 = await env.AI.run(MODEL, { max_tokens: 256, messages: [
+            { role: 'system', content: 'You convert a payment task into JSON. Known recipient name: "Vendor A" = ' + vendorA + '. Reply with ONLY a JSON object: {"destination":"<base58 address>","amountSol":<number>} - or {"error":"why"} if the task is not a clear SOL payment. Never invent an address; use only an address present in this prompt or literally given in the task.' },
+            { role: 'user', content: task },
+          ] });
+          const rawResp = r1 && r1.response; const text = typeof rawResp === 'string' ? rawResp : JSON.stringify(rawResp !== undefined ? rawResp : r1).slice(0, 400);
+          const m = text.match(/\{[\s\S]*\}/);
+          if (m) proposal = JSON.parse(m[0]); else aiError = 'model returned no JSON: ' + text.slice(0, 200);
+        } catch (e) { aiError = String(e); }
+        if (aiError || !proposal || proposal.error) {
+          const err = (proposal && proposal.error) || aiError || 'could not interpret task';
+          return Response.json({ ok: false, stage: 'interpret', error: err, model: MODEL, note: NOTE }, { status: 422, headers: { ...CORS, 'content-type': 'application/json' } });
+        }
+        const tx = { destination: String(proposal.destination || ''), amountSol: Number(proposal.amountSol) };
+        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(tx.destination) || !Number.isFinite(tx.amountSol) || !Number.isSafeInteger(Math.round(tx.amountSol * 1e9)) || !(tx.amountSol > 0))
+          return Response.json({ ok: false, stage: 'validate', error: 'AI proposal failed shape validation (destination/amount)', proposal: tx, note: NOTE }, { status: 422, headers: { ...CORS, 'content-type': 'application/json' } });
+        const ev = await gate().fetch(new Request('https://do/evaluate', { method: 'POST', body: JSON.stringify(tx) }));
+        const verdict = await ev.json().catch(() => null);
+        if (!verdict || typeof verdict.allow !== 'boolean')
+          return Response.json({ ok: false, stage: 'policy', error: 'policy engine unavailable', note: NOTE }, { status: 503, headers: { ...CORS, 'content-type': 'application/json' } });
+        let explanation = null;
+        try {
+          const r2 = await env.AI.run(MODEL, { max_tokens: 96, messages: [
+            { role: 'system', content: 'Explain a payment policy verdict in at most 2 short sentences. The verdict is final, made by deterministic rules - never contradict or soften it.' },
+            { role: 'user', content: 'Verdict: ' + (verdict.allow ? 'ALLOWED' : 'BLOCKED') + '. Reasons: ' + ((verdict.reasons || []).join('; ') || 'every policy check passed') + '. Payment requested: ' + tx.amountSol + ' SOL to ' + tx.destination + '.' },
+          ] });
+          explanation = String((r2 && r2.response) || '').trim() || null;
+        } catch (e) {}
+        return Response.json({ ok: true, model: MODEL, task, proposal: tx, verdict: { allow: verdict.allow, reasons: verdict.reasons || [] }, explanation, note: NOTE }, { headers: { ...CORS, 'content-type': 'application/json' } });
       }
       if (url.pathname === '/api/evaluate' && req.method === 'POST') {
         const s = await gate().fetch(new Request('https://do/evaluate', { method: 'POST', body: await req.text() }));
