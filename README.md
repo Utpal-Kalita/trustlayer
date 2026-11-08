@@ -31,6 +31,18 @@ types it can use and when its permissions expire - and a deterministic policy en
 enforces those rules on every request. The AI can never modify, override or approve its
 own policy. The security boundary does not depend on the AI behaving correctly.
 
+## Architecture
+
+TrustLayer has three core layers:
+
+1. **AI agent (intelligence layer).** Understands natural-language tasks, discovers and reads vendor information in the demo's vendor catalogue, checks budgets and proposes payments.
+2. **Policy engine (authorization layer).** Deterministically checks spending limits and cumulative budgets, validates recipient allowlists and blocklists, checks permitted actions and policy expiry, and approves or rejects every proposal.
+3. **Solana execution layer.** Runs the Squads 2-of-2 multisig: the hosted agent casts the first vote, and the independent owner-side gatekeeper verifies the transaction and casts the second.
+
+The dashboard is the user interface to these layers, not a fourth core component.
+
+**AI proposes. Policy authorizes. Multisig executes.**
+
 ## Demo and live links
 
 - **Demo video (1:56):** https://youtu.be/h3BCBdKqOtw
