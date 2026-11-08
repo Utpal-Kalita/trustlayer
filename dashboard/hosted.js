@@ -47,7 +47,7 @@ function checksFor(d, amountSol, destination) {
   const ledger = hit(/ledger unavailable/i);
   const list = [
     row('Permission expiry', hit(/expired/i), `Valid until ${p.expiresAt ? new Date(p.expiresAt).toISOString() : '—'}.`),
-    row('Allowed action', hit(/action/i), 'SOL transfer is permitted.'),
+    row('Allowed action', hit(/\baction\b/i), 'SOL transfer is permitted.'),
     row('Program', hit(/program/i), 'System Program only.'),
     row('Transaction limit', hit(/per-transaction|invalid amount/i), `${solN(amountSol)} is within the ${solN(p.maxSolPerTransaction)} per-transaction limit.`),
     row('Spending limit', hit(/budget/i), `Within the ${solN(p.maxSolTotal)} total, counting spend derived from chain.`),
