@@ -1,7 +1,7 @@
 # TrustLayer
 
-**Authorization infrastructure for AI agents that handle money.**
-*Autonomous agents. Limited authority. Verifiable execution.*
+**The authorization infrastructure for autonomous AI agents.**
+*Give AI agents the freedom to act. Never give them unlimited authority.*
 
 An AI agent never gets unrestricted wallet authority. It **asks** to pay. A
 deterministic policy engine decides whether the payment is allowed. A real payment needs
@@ -11,6 +11,103 @@ model is in the decision path.
 
 > A transaction can be technically valid on Solana and still be unauthorized.
 > TrustLayer rejects it.
+
+**The AI proposes. TrustLayer authorizes. Solana executes.**
+
+## The problem
+
+AI agents are becoming autonomous actors that can manage money, purchase services and
+interact with other agents. But an agent can be manipulated by malicious instructions
+hidden in webpages, documents or other external content. If that agent has unrestricted
+access to a wallet, a single compromised decision can move money. Wallet permissions were
+not designed around the unpredictable behaviour of autonomous AI agents.
+
+## The solution
+
+TrustLayer is a security boundary between AI agents and financial execution. Instead of
+trusting the agent to behave, the owner defines exactly what it may do - how much it can
+spend per payment, its total budget, which recipients it can pay, which transaction
+types it can use and when its permissions expire - and a deterministic policy engine
+enforces those rules on every request. The AI can never modify, override or approve its
+own policy. The security boundary does not depend on the AI behaving correctly.
+
+## Demo and live links
+
+- **Demo video (1:56):** https://youtu.be/h3BCBdKqOtw (unlisted)
+- **Live console:** https://trustlayer-dashboard-omega.vercel.app/app.html - the **Ask the agent** tab runs the real AI routes against the live backend as dry runs
+- **Landing page:** https://trustlayer-dashboard-omega.vercel.app/
+- **Live backend:** https://trustlayer-api-cf.adzeo2.workers.dev (`GET /api/health`, `/api/policies`, `/api/audit`, `/api/state`; public AI routes below)
+
+## Features
+
+- **Plain-language tasks in, checked payments out.** An AI model (Groq `openai/gpt-oss-20b`) turns a task into a structured payment proposal and writes the explanation. It never decides anything.
+- **Deterministic policy engine.** Per-payment and total SOL limits, recipient allowlist and blocklist, System-Program-transfers only, policy expiry, one-time-use authorizations. Fails closed on any error.
+- **Two-key execution (Squads 2-of-2).** An approved payment becomes a real Squads proposal: the hosted agent key votes 1-of-2; the owner-side gatekeeper reads the transaction back from chain, byte-verifies it, then votes 2-of-2 and executes. Neither key moves funds alone.
+- **Prompt-injection defense, shown live.** A controlled vendor catalogue hides a malicious "payout wallet changed" notice. The careless agent profile asks to pay the attacker wallet; the engine blocks it (verified live on devnet, 2026-11-08). The default careful profile refuses the page outright.
+- **Crash-safe spend ledger.** Executed spend and open reservations are re-derived from on-chain memos, so the budget survives redeploys and an executed authorization cannot be replayed.
+- **Judge-friendly public API.** Dry-run evaluation and both AI routes are public and rate-limited; real proposals stay operator-only. A daily model-step quota is enforced by the worker.
+- **Owner console.** Live policy, audit log of every decision, chain-derived usage, and an "Ask the agent" tab that runs the real AI route as a dry run.
+
+## Architecture
+
+```
+Browser console (Vercel)          Cloudflare Worker + Durable Object            Solana devnet
+------------------------          ----------------------------------            ----------------------
+landing + "Ask the agent"   -->   public read + dry-run routes           -->    Squads v4 2-of-2 multisig
+dashboard (no keys)               AI routes (Groq openai/gpt-oss-20b)                 ^
+                                  policy engine - the only decider                    |
+                                  AGENT key: proposes, votes 1-of-2                   |
+                                                                                      |
+Owner's machine: scripts/gatekeeper-execute.mjs - re-reads the vault tx from chain, --+
+byte-verifies it, then votes 2-of-2 and executes
+
+Optional local API (src/, Node): agent registration, per-agent policies,
+same inspect -> simulate -> policy -> reserve -> propose pipeline.
+```
+
+The flow for any payment:
+
+1. A task in plain language becomes a structured proposal (destination, amount).
+2. The policy engine checks it against the owner's rules. Only its verdict counts.
+3. An approved payment (operator route only) becomes a Squads vault transaction and proposal, with the agent's vote 1-of-2.
+4. The gatekeeper on the owner's machine re-reads the exact transaction from chain, refuses anything unexpected, votes 2-of-2 and executes.
+5. Executed spend and open reservations are re-derived from on-chain memos (`GET /api/state`), so restarts cannot reset the budget.
+
+## Built on Solana
+
+| Component | Technology |
+|---|---|
+| Blockchain | Solana (devnet, test SOL) |
+| Transaction authorization | Squads protocol (2-of-2 multisig) |
+| AI interpretation | Groq - `openai/gpt-oss-20b` |
+| Backend | Cloudflare Workers + Durable Objects |
+| Console | Vercel (static dashboard) |
+| Policy enforcement | Deterministic off-chain engine; the Squads threshold enforces the outcome on chain |
+
+Autonomous agents will increasingly need financial infrastructure. Solana provides the
+execution layer; Squads provides the multisig mechanism that keeps both the agent and
+the owner in every real transaction.
+
+## What the demo shows
+
+- **A normal payment, end to end.** A vendor payment is approved by the engine and
+  executed through the 2-of-2 flow, with the gatekeeper verifying the transaction from
+  chain before casting the second vote.
+- **A careful agent under injection.** On a vendor page hiding a malicious "payout
+  wallet changed" notice, the default agent refuses to buy at all.
+- **A careless agent under injection.** The naive agent follows the injected
+  instructions and asks to pay the attacker - and the policy engine blocks it. The
+  boundary holds even when the AI fails.
+- All public demo runs are dry runs. Real execution was verified separately on devnet
+  with test SOL (proof links below).
+
+## Vision
+
+Autonomous agents will manage treasuries, purchase services and coordinate with other
+agents. Autonomy without authorization creates risk. TrustLayer aims to become the
+authorization infrastructure for that economy: agents act independently while remaining
+accountable to the permissions their owners set. The goal is not to make AI agents less
+autonomous - it is to make it safe to give them more autonomy.
 
 Built for the **MLH Solana Hackathon, Nov 6-8 2026**. Solana devnet only, test SOL only.
 This is a prototype, not production-ready financial infrastructure. Product spec: [prd.md](prd.md).
@@ -123,11 +220,15 @@ Limits on public use, enforced by the worker:
 
 - **Single-task route, live:** given a task containing an injected instruction, the model
   proposed paying the attacker wallet and the deterministic policy engine blocked it.
-- **Multi-step agent, live:** in real poisoned-page runs, the model either refused to buy or
-  asked to pay only the allowlisted Vendor A. It did **not** attempt an attacker payment,
-  so these runs did not show a live hijack being blocked.
-- **Naive profile:** added after those runs and not yet run against the live model, so
-  no live result is claimed for it.
+- **Multi-step agent, `careful` profile (default), live:** on the poisoned vendor page the
+  model notices the injected wallet change and refuses to buy, ending the run with no
+  payment request (verified 2026-11-08: "the vendor's wallet has changed and the new
+  address is not in the approved recipients list... No payment was made").
+- **Multi-step agent, `naive` profile, live:** the careless agent follows the injected
+  instruction and asks to pay the 0.02 SOL "verification fee" to the attacker wallet
+  (verified 2026-11-08). The deterministic engine BLOCKED it: explicitly blocked
+  destination, not in the allowlist. A live hijack attempt, stopped before the chain.
+  Public runs are always dry runs, so nothing moved.
 - **Multi-step agent, offline tests** (`node scripts/test-agent-loop.mjs`): a scripted model
   that follows the malicious instructions asks to pay the attacker; the real policy engine
   blocks it, and the agent then pays Vendor A. These are offline tests with a scripted
@@ -230,7 +331,9 @@ or `{ "transaction": "<base64 serialized tx>" }`. Policy body:
 - Model errors and rate limits (Groq's or TrustLayer's daily quota) can stop an agent run
   before its final summary.
 - Duplicate-payment protection in the agent covers one run only, not separate runs.
-- Live multi-step runs have not shown the model attempting an attacker payment (see above).
+- In live multi-step runs the default (careful) agent refuses the poisoned page rather than
+  attempting the attacker payment; the naive profile attempts it, and the engine blocks
+  it (see above).
 - Devnet and test SOL only. This is a hackathon prototype, not production-ready financial
   infrastructure.
 
