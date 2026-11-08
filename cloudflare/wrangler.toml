@@ -1,0 +1,17 @@
+name = "trustlayer-api-cf"
+main = "src/worker.js"
+compatibility_date = "2026-11-01"
+
+[durable_objects]
+bindings = [{ name = "POLICY_GATE", class_name = "PolicyGate" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PolicyGate"]
+
+[vars]
+POLICY_ID = "default-hackathon-policy"
+VAULT = "93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe"
+MULTISIG = "BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC"
+RPC_URL = "https://trustlayer-rpc-proxytrustlayer-rpc-proxy.onrender.com"
+POLICY_JSON = "{\"version\": 1, \"name\": \"default-hackathon-policy\", \"maxSolPerTransaction\": 0.05, \"maxSolPerDay\": 0.1, \"allowedPrograms\": [\"11111111111111111111111111111111\"], \"allowedDestinations\": [\"HnJmp1w4iSgoHiKjDckNSc9qkXSuREu9Ch2NWJabPC3Z\"], \"blockedDestinations\": [\"7GC8LGCn9vJ6jDQ1jQQ8ctyyRRcnSRWW2HvVDEsnKScM\"], \"notes\": \"Devnet demo policy per PRD section 15: max 0.05 SOL/tx, 0.1 SOL total budget, Vendor A allowlisted only, SOL transfers (System Program) only, 2-hour expiry from issue. One-time use: an executed authorization (bound to the exact transaction content + policy version) cannot be replayed; retries after failure stay allowed.\", \"maxSolTotal\": 0.1, \"allowedActions\": [\"transfer\"], \"expiresAt\": \"2026-11-08T09:40:19.144Z\", \"oneTimeUse\": true}"
