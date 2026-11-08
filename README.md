@@ -118,14 +118,20 @@ Local validator proof (solana-test-validator with the real Squads v4 program `SQ
 2. **Blocked attack** — policy returns REJECT (blocked destination); agent alone cannot execute (Squads error 6004, no Execute permission), cannot double-vote (6010), and even the gatekeeper cannot execute an unapproved proposal (6008). Attacker balance stayed 0.
 3. **Non-custodial** — the gatekeeper alone (1 of 2 votes) cannot move funds (6008); vault balance unchanged.
 
-Devnet run with public explorer links: pending devnet SOL (public RPC faucets are closed; fund the creator wallet at https://faucet.solana.com, then run `node scripts/spike.mjs`).
+Public devnet proof (2026-11-08, `node scripts/spike.mjs` against `api.devnet.solana.com`) — all three scenarios pass on the real cluster:
+
+- Multisig `BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC`, vault `93jfvLFdWn4CSPA9p7GeZWYubU4ZZ4H1m7Xa1UZtbwCe` ([explorer](https://explorer.solana.com/address/BLQCpxEZphLk4BexY7fpZmaP9oZTsmMxc7ZNDRvtitEC?cluster=devnet))
+- **Allowed payment** executed: policy ALLOW -> agent approve -> gatekeeper approve -> gatekeeper execute ([tx](https://explorer.solana.com/tx/3NxbjhoT1QDPGTfFDeTQBo2gMsNenkMa8LS6qWYLeLF5RToGV7fSWquvWGvse6MewnRmDMS7wMARzc7y3JVNXQmE?cluster=devnet)). Verified after: vendor 0.01 SOL, vault 0.19 SOL.
+- **Blocked attack** rejected by the policy engine (blocked destination); agent-alone execute failed on-chain (Squads 0x1774), double-vote failed, gatekeeper execute on the unapproved proposal failed (0x1778). Attacker balance stayed 0.
+- **Non-custodial**: the gatekeeper alone (1 of 2 votes) cannot move funds (0x1778); vault unchanged.
+
+Full run record with all transaction signatures: [docs/DEVNET-FUNDING.md](docs/DEVNET-FUNDING.md). Local-validator evidence with byte-level reconciliation: [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Roadmap (future work)
 
 - Cryptographically signed task-authorization tokens: an authorization artifact
   bound to task ID, agent, recipient, cap, nonce and expiry that third parties
   can verify, extending today's content-bound one-time authorizations.
-- Public devnet execution (blocked only by devnet SOL funding).
 - Full registration / multi-user configuration UI (today: JSON policy + the
   basic authenticated editor at dashboard/policy.html).
 - Product-delivery verification (proof the vendor delivered, not just that the
