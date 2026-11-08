@@ -10,11 +10,17 @@ const { transactions, accounts, types } = multisig;
 const { Permissions, Permission } = types;
 
 export function loadKeys(envFile = '.env') {
+  // Secrets come from the .env file locally, or from real environment
+  // variables on a hosted deploy (no .env file is ever committed or deployed).
   const env = {};
-  for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
-    const m = line.match(/^([A-Z_]+)=(.+)$/);
-    if (m) env[m[1]] = m[2].trim();
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z_]+)=(.+)$/);
+      if (m) env[m[1]] = m[2].trim();
+    }
   }
+  for (const k of ['OWNER_SECRET', 'AGENT_SECRET', 'GATEKEEPER_SECRET', 'VENDOR_A_PUBKEY', 'ATTACKER_PUBKEY'])
+    if (process.env[k]) env[k] = process.env[k];
   const kp = (n) => Keypair.fromSecretKey(bs58.decode(env[n + '_SECRET']));
   return { owner: kp('OWNER'), agent: kp('AGENT'), gatekeeper: kp('GATEKEEPER'), env };
 }
@@ -154,4 +160,4 @@ export async function runProposal(conn, keys, state, audit, { destination, amoun
     audit.record({ kind: 'execute', id: rid, nonce: decision.authId ?? nonce, released: true, note: String(err).slice(0, 200) });
     throw err;
   }
-                }
+}
