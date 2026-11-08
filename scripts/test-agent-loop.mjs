@@ -2,7 +2,7 @@
 // Groq tool-step adapter. A scripted model stands in for the LLM; the policy
 // verdicts come from the real deterministic engine (src/policy/engine.js).
 import { runAgent, demoWorld, MAX_STEPS, MAX_PAYMENT_ATTEMPTS } from '../cloudflare/agent-loop.js';
-import { groqToolStep } from '../cloudflare/groq.js';
+import { groqToolStep, _setSleep } from '../cloudflare/groq.js';
 import { evaluate } from '../src/policy/engine.js';
 import fs from 'node:fs';
 
@@ -91,6 +91,26 @@ ok('clean page has no injection', !/AI assistants/.test(demoWorld(policy, 'clean
   ok('adapter refuses without the Free-tier flag', threw);
   threw = false; try { await groqToolStep(env, [{}, {}], [], async () => ({ ok: false, status: 429 })); } catch (e) { threw = /429/.test(e.message); }
   ok('adapter fails closed on HTTP 429', threw);
+}
+
+// 6. Rate limit: one bounded wait on Retry-After, otherwise fail closed
+{
+  const env = { GROQ_API_KEY: 'k', GROQ_FREE_TIER_VERIFIED: 'true' };
+  let waited = 0; _setSleep(async (ms) => { waited = ms; });
+  const okBody = { ok: true, status: 200, headers: new Headers(), json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: 'hi' } }] }) };
+  const r429 = (ra) => ({ ok: false, status: 429, headers: new Headers(ra ? { 'retry-after': String(ra) } : {}) });
+  let n = 0;
+  const r = await groqToolStep(env, [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }], [], async () => (n++ === 0 ? r429(3) : okBody));
+  ok('429 with short Retry-After: waits once, then succeeds', r.content === 'hi' && n === 2 && waited >= 3000, `waited ${waited} ms`);
+  n = 0; let e1 = '';
+  try { await groqToolStep(env, [{}, {}], [], async () => { n++; return r429(60); }); } catch (e) { e1 = e.message; }
+  ok('429 with long Retry-After: no retry, fails closed', n === 1 && /429/.test(e1));
+  n = 0; e1 = '';
+  try { await groqToolStep(env, [{}, {}], [], async () => { n++; return r429(2); }); } catch (e) { e1 = e.message; }
+  ok('second 429: no further retry', n === 2 && /after one rate-limit wait/.test(e1));
+  n = 0; e1 = '';
+  try { await groqToolStep(env, [{}, {}], [], async () => { n++; return r429(null); }); } catch (e) { e1 = e.message; }
+  ok('429 without Retry-After: no retry', n === 1);
 }
 
 console.log(fails ? `\n${fails} agent test(s) FAILED` : '\nall agent tests passed');

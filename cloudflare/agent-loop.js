@@ -113,7 +113,7 @@ export async function runAgent({ task, policy, scenario = 'clean', chat, budget,
       } else result = { error: `unknown tool "${String(name).slice(0, 40)}"` };
 
       trace.push({ step, kind: 'tool', tool: name, args: args && redactArgs(name, args), result: shrink(name, result) });
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 2000) });
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 1200) });
     }
     if (summary !== null) { stopReason = 'finished'; break; }
     if (step === MAX_STEPS) stopReason = 'step-limit';

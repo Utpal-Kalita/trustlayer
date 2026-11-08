@@ -41,9 +41,20 @@ export async function groqToolStep(env, messages, tools, fetcher = fetch) {
   if (!Array.isArray(messages) || messages.length < 2 || messages.length > 40) throw new Error('Invalid agent message list');
   if (JSON.stringify(messages).length > 24000) throw new Error('Agent context too long');
   const payload = { model: GROQ_MODEL, messages, tools, tool_choice: 'auto', parallel_tool_calls: false, max_completion_tokens: 512, reasoning_effort: 'low', temperature: 0, stream: false };
+  // Agent steps arrive seconds apart, so the free tier's tokens-per-minute cap can
+  // answer 429 mid-run. Honour Groq's Retry-After ONCE when it is short (<= 20 s);
+  // anything else fails closed. A retry repeats the same step: no extra quota unit.
+  const send = () => fetcher(URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.GROQ_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(25000) });
   let res;
-  try { res = await fetcher(URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.GROQ_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(25000) }); }
+  try { res = await send(); }
   catch { throw new Error('Groq request failed or timed out; no automatic retry'); }
+  if (res.status === 429) {
+    const wait = Number(res.headers?.get?.('retry-after'));
+    if (!(wait > 0 && wait <= 20)) throw new Error('Groq HTTP 429 (rate limit, retry-after ' + (res.headers?.get?.('retry-after') || 'unknown') + '); no retry');
+    await sleep(Math.ceil(wait * 1000) + 250);
+    try { res = await send(); } catch { throw new Error('Groq request failed or timed out after one rate-limit wait'); }
+    if (!res.ok) throw new Error('Groq HTTP ' + res.status + ' after one rate-limit wait; no further retry');
+  }
   if (!res.ok) throw new Error('Groq HTTP ' + res.status + '; no automatic retry');
   const data = await res.json();
   const msg = data?.choices?.[0]?.message;
@@ -51,3 +62,6 @@ export async function groqToolStep(env, messages, tools, fetcher = fetch) {
   const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls.slice(0, 3).map(c => ({ id: String(c.id).slice(0, 64), type: 'function', function: { name: String(c.function?.name || '').slice(0, 40), arguments: String(c.function?.arguments || '{}').slice(0, 2000) } })) : [];
   return { content: typeof msg.content === 'string' ? msg.content.slice(0, 2000) : '', tool_calls: calls };
 }
+
+export let sleep = (ms) => new Promise(r => setTimeout(r, ms));
+export function _setSleep(f) { sleep = f; } // tests
