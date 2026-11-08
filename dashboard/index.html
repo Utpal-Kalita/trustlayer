@@ -135,7 +135,7 @@
 <footer><div class="wrap">TrustLayer - MLH Solana Hackathon 2026 - Devnet only, no real funds.</div></footer>
 
 <script>
-const API_BASE = location.hostname.endsWith('github.io') ? 'https://trustlayer-api.onrender.com' : '';
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('onrender.com')) ? '' : 'https://trustlayer-api-p58e.onrender.com';
 
 const $ = s => document.querySelector(s);
 const short = a => a.slice(0,6) + '...' + a.slice(-4);
