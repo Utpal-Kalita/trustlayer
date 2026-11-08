@@ -45,3 +45,11 @@ Observed 2026-11-08 (Asia/Kolkata), fresh validator per run:
 
 - Public devnet execution (blocked on devnet SOL funding for the owner wallet).
 - The hosted API (runs locally only; no public signing endpoint exists).
+
+## 2026-11-08 hosted Squads devnet proof
+
+Worker (Cloudflare, agent key only) proposed + approved 1-of-2 on the canonical
+devnet multisig; independent gatekeeper approved 2-of-2 and executed. See
+HOSTED-SIGNING-DESIGN.md addendum for sigs, the interim direct-signing
+deviation, and its correction. Ledger derivation verified against squads
+inner-instruction memos.
