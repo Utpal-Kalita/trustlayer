@@ -40,11 +40,17 @@ export async function groqToolStep(env, messages, tools, fetcher = fetch) {
   if (env.GROQ_FREE_TIER_VERIFIED !== 'true') throw new Error('Groq Free tier not verified; inference disabled');
   if (!Array.isArray(messages) || messages.length < 2 || messages.length > 40) throw new Error('Invalid agent message list');
   if (JSON.stringify(messages).length > 24000) throw new Error('Agent context too long');
-  const payload = { model: GROQ_MODEL, messages, tools, tool_choice: 'auto', parallel_tool_calls: false, max_completion_tokens: 512, reasoning_effort: 'low', temperature: 0, stream: false };
+  const payload = { model: GROQ_MODEL, messages, tools, tool_choice: 'auto', parallel_tool_calls: false, max_completion_tokens: 4096, reasoning_effort: 'low', temperature: 0, stream: false };
   let res;
   try { res = await fetcher(URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.GROQ_API_KEY }, body: JSON.stringify(payload), signal: AbortSignal.timeout(25000) }); }
   catch { throw new Error('Groq request failed or timed out; no automatic retry'); }
-  if (!res.ok) throw new Error('Groq HTTP ' + res.status + '; no automatic retry');
+  if (!res.ok) {
+    const t = res.text ? String(await res.text().catch(() => '')) : '';
+    // The model generated tool-call arguments Groq could not parse (often a
+    // truncated generation): not fatal - signal the loop to ask for a retry.
+    if (t.includes('tool_use_failed')) return { content: '', tool_calls: [], invalidToolCall: true };
+    throw new Error('Groq HTTP ' + res.status + ' ' + t.slice(0, 300) + '; no automatic retry');
+  }
   const data = await res.json();
   const msg = data?.choices?.[0]?.message;
   if (!msg || !['stop', 'tool_calls'].includes(data.choices[0].finish_reason)) throw new Error('Groq returned incomplete output');
